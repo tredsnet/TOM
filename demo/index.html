@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>T.O.M. | TREDS.net operating module</title>
+	<script type="text/javascript" src="../TOM.js"></script>
+</head>
+<body>
+	<script>
+		// Загрузка функционала
+		var startLoad = function( )
+		{
+			// Настраиваем
+			TOM.boot.options( 'baseURL', './' )
+					.options( 'cache', true );
+
+			// Загрузка библиотек
+			TOM.boot.load( 'libraries/*', 'lib', function( ) 
+			{
+				// Модули
+				TOM.boot.load( 'modules/*', 'test', function( )
+				{
+					// Проксируем то что ещё не проксировали ( core и interface )
+					TOM.processor.proxy( core )
+								.proxy( interface );
+
+					// Стартуем комутатор после того как загрузились все скрипты
+					// core.commutator.start( );
+
+					// Загружаем скрипты для тестирования
+					// TOM.boot.load( '', [ 'classesTest.js', 'processorTest.js' ] );
+				} );		
+			} );
+		};
+		
+		// Загружаем JQuery с CDN, а после всё остальное
+		TOM.boot.load( '', 'https://code.jquery.com/jquery-1.12.0.min.js', function( )
+		{
+			startLoad( );
+		} );
+	</script>
+</body>
+</html>

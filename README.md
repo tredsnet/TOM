@@ -1,2 +1,2 @@
 # TOM
-TOM - "Treds" operating module
+T.O.M. | TREDS.net operating module
