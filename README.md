@@ -1,4 +1,4 @@
-# T.O.M.
+# T.O.M. [![Build Status](https://travis-ci.org/tredsnet/TOM.svg?branch=master)](https://travis-ci.org/tredsnet/TOM)
 >*(расшифровывается как "treds.net" operating module, в честь проекта в котором она разработана)*
 
 Библиотека *(мини-фреймворк если хотите)* - позволяющая быстро создавать модульные приложения.

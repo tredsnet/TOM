@@ -35,12 +35,14 @@ var paths =
 var bundles =
 {
 	dev: {
+		fileSuffix: '',
 		name: 'dev',
 		compress: false,
 		debug: true
 	},
 	
 	production: {
+		fileSuffix: '.min',
 		name: 'production',
 		compress: true,
 		debug: false
@@ -88,6 +90,9 @@ gulp.task( 'config:sync', function( )
 // Сборка фреймворка TOM
 gulp.task( 'TOM:build', function( ) 
 { 
+	// Формируем имя файла
+	var fileName = 'TOM' + bundle.fileSuffix + '.js';
+	
 	// Формируем заголовок для файла
 	var pkg = require( './package.json' ),
 		banner = [ '/**',
@@ -102,7 +107,7 @@ gulp.task( 'TOM:build', function( )
 	
 	return gulp.src( paths.src.main + 'main.js' )
 			.pipe( rigger( ) )
-			.pipe( concat( 'TOM.js' ) )
+			.pipe( concat( fileName ) )
 			.pipe( header( banner, { pkg : pkg } ) ) // Установка хидера
 			.pipe( gulpif( bundle.compress, uglify( { mangle: false, compress: false } ) ) )
 			.pipe( gulp.dest( paths.build.main ) );
