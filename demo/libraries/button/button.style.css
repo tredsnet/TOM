@@ -1,0 +1,28 @@
+.button {
+	display: block;
+	border: dashed 1px black;
+	height: 20px;
+	margin: 0 auto;
+
+	margin: 5px 0px;
+	padding: 5px 0px 0px 10px;
+}
+
+.button:hover {
+	border: solid 1px black;
+	cursor: pointer;
+}
+
+.button {
+	background-color: green;
+}
+
+.button.test-button {
+	background-color: white;
+}
+
+.button.test-button span {
+	float: right;
+	font-size: 10px;
+	padding-right: 10px;
+}

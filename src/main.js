@@ -1,21 +1,7 @@
-/*!
- * TOM - treds operating module 
- * https://github.com/tredsnet/TOM/
- * http://treds.net
- *
- * Developers:
- * Borisenko V.
- *
- * Released under the Apache 2 license
- *
- * Date:
- * 30.06.2015
- */
-
 (function( window )
 {
 	// Инициализируем системные области видимости
-	var scopeList = [ 'api', 'core', 'interface' ];
+	var scopeList = [ 'core', 'interface' ];
 	for( var i in scopeList )
 	{
 		window[ scopeList[ i ] ] = { __scopeName__: scopeList[ i ] };
@@ -119,6 +105,4 @@
 	//= processor.js
 
 	//= classes.js
-
-	//= commutator.js
 } )( window );

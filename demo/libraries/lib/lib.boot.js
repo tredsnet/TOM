@@ -1,3 +1,3 @@
 TOM.boot.initiate( 'lib', [
-	{ file: '*.js' }
+	{ file: 'lib.js' }
 ] );

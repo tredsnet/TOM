@@ -7,30 +7,35 @@ var core =
 		{
 			// Делаем ссылку на интерфейс
 			this.interface = interface.test;
-			
-			// Отображаем интерфейс
-			this.show( );
+						
+			// Создаём ссылку на текущий контекст
+			var context = this;
 			
 			// Добавляем кнопки управления
-			var context = this;
-			$( '<div class="button">Добавить тестовую кнопку</div>' ).appendTo( this.interface.$controls )
-									.on( 'click', function( ) { context.addButton( '-- Тестовая кнопка --' ); } );
-							
-			/*
-			 $( '<div class="button">Загрузить модуль "commutator"</div>' ).appendTo( this.interface.$controls )
-									.on( 'click', function( ) {  } );
-			*/
+			new core.Button( 'Добавить кнопку', this.interface.$controls, function( ) { context.addTestButton( context.interface.$testButtons ); } );
 			
+			// Загрузить аддон случайного изменения кнопок
+			this.addonButton = new core.Button( 'Загрузить аддон "randomButton"', this.interface.$controls, function( ) 
+			{ 
+				TOM.boot.load( 'addons/*', 'randomButton', function( )
+				{
+					// Меняем действие при нажатии на кнопку
+					context.addonButton.interface.area.html( 'Выгрузить аддон "randomButton"' )
+														.off( )
+														.on( 'click', function( ) { context.removeAddon( ); } );
+				} );		
+			} );
+
 			// Добавляем обработчик события
-			TOM.processor.bind( 'pre-core.test.addButton', function( sender )
+			TOM.processor.bind( 'pre-core.test.addTestButton', function( sender )
 			{
 				// Выводим лог
-				core.lib.log( 'Сработало действие "core.test.addButton"' );
+				core.lib.log( 'Сработало действие "core.test.addTestButton"' );
 
 				// Если чекбокс отмечен - переспрашиваем
 				if( $( '#use-processor' ).is( ':checked' ) )
 				{
-					core.lib.log( 'Перехватили действие "core.test.addButton"' );
+					core.lib.log( 'Перехватили действие "core.test.addTestButton"' );
 					
 					// Если мы не хотим на самом деле создавать кнопку - прерываем её создание
 					if( !confirm( 'Действительно создать кнопку?' ) )
@@ -40,26 +45,17 @@ var core =
 				}
 			} );
 		},
-
-		show: function( )
+		
+		addTestButton: function( selector )
 		{
-			this.interface.show( );
-			
-			return this;
+			return new core.TestButton( selector );
 		},
 		
-		hide: function( )
+		removeAddon: function( )
 		{
-			this.interface.show( );
-			
-			return this;
-		},
-		
-		addButton: function( caption, callback )
-		{
-			return this.interface.addButton( caption, callback );
+			this.addonButton.destroy( );
 		}
 	};
 
 	return core;
-})( core || {} );
+} )( core || {} );

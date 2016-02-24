@@ -1,0 +1,17 @@
+body {
+	width: auto;
+}
+
+#mainBlock {
+	display: block;
+	height: auto;
+	width: 500px;
+	background-color: #D8D8D8;
+	margin: 0 auto;
+	padding: 10px;
+}
+
+#mainBlock #controls {
+	background-color: gray;
+	padding: 10px;
+}
