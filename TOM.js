@@ -3,7 +3,7 @@
  * @version v1.0.0
  * @link https://github.com/tredsnet/TOM
  * @license Apache 2.0
- * @author Borisenko Vladimir ( TREDS.NET )
+ * @author TREDS.NET (http://www.treds.net)
  */
 
 (function( window )
