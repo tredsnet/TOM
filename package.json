@@ -9,8 +9,8 @@
     {
       "name": "Borisenko Vladimir",
       "email": "ange007@users.noreply.github.com",
-      "url": "https://github.com/ange007/"
-    }
+      "url" : "https://github.com/ange007/"
+    } 
   ],
   "devDependencies": {
     "gulp": "^3.8.11",
