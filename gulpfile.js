@@ -9,7 +9,7 @@ var gulp = require( 'gulp' ),
 	concat = require( 'gulp-concat' ),
 	uglify = require('gulp-uglify'),
 	header = require('gulp-header'),
-	rigger = require( 'gulp-rigger' ),
+	include = require( 'gulp-include' ),
 	watch = require( 'gulp-watch' ),
 	sync = require( 'gulp-config-sync' ),
 	rimraf = require( 'rimraf' );
@@ -105,11 +105,12 @@ gulp.task( 'TOM:build', function( )
 					'',
 					'' ].join( '\n' );
 	
+	// Выполняем поставленные задачи
 	return gulp.src( paths.src.main + 'main.js' )
-			.pipe( rigger( ) )
-			.pipe( concat( fileName ) )
+			.pipe( include( { hardFail: true } ) ) // Импортируем файлы
+			.pipe( concat( fileName ) ) // Объеденяем файлы
 			.pipe( header( banner, { pkg : pkg } ) ) // Установка хидера
-			.pipe( gulpif( bundle.compress, uglify( { mangle: false, compress: false } ) ) )
+			.pipe( gulpif( bundle.compress, uglify( { mangle: false, compress: false } ) ) ) // Сжимаем скрипт
 			.pipe( gulp.dest( paths.build.main ) );
 } );
 

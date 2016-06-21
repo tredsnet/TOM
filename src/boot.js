@@ -3,13 +3,13 @@ TOM.boot =
 {
 	/*
 	 * @ToDO:
-	 * 1. ? Сделать callback окончания полной загрузки всех модулей ( после того как убедились что всё загрузили - сами вызываем boot.Complete - и срабатывает колбек )
-	 * 2. ? Инициализировать скрипты только после полной загрузки всех модулей.
-	 * 3. ? Сделать параметр инициализации приложения - "по окончанию загрузки" ( инициализировать когда сработал - boot.complete )
-	 * 4. ? Загружать вначале модули/файлы без зависимостей
-	 * 5. ? Ускорить работу _requireCheck
-	 * 6. ? Добавить проверку на существование модуля/файла из списка зависимостей
-	 * 7. Инициализация должна проходить с учётом зависимостей
+	 * 1. (+) Сделать callback окончания полной загрузки всех модулей ( после того как убедились что всё загрузили - сами вызываем boot.Complete - и срабатывает колбек )
+	 * 2. ( ) Инициализировать скрипты только после полной загрузки всех модулей.
+	 * 3. ( ) Сделать параметр инициализации приложения - "по окончанию загрузки" ( инициализировать когда сработал - boot.complete )
+	 * 4. ( ) Загружать вначале модули/файлы без зависимостей
+	 * 5. ( ) Ускорить работу _requireCheck
+	 * 6. ( ) Добавить проверку на существование модуля/файла из списка зависимостей
+	 * 7. ( ) Инициализация должна проходить с учётом зависимостей
 	 */
 
 	/* @toRefact: 
@@ -38,9 +38,6 @@ TOM.boot =
 	  * TOM.boot.load( '', 'https://code.jquery.com/jquery-1.12.0.min.js', function( ){ } );
 	  */
 
-	// Параметры отладки
-	_debug: TOM._options.debug.boot, 
-
 	// Общий список модулей со всеми данными
 	_moduleList: [],
 
@@ -51,10 +48,13 @@ TOM.boot =
 	_fileLoadedStates: [],
 
 	// Колбек должен вызваться только после полной загрузки всех модулей из данного списка
-	_callbackList: [],
-
+	_modulesCallbackList: [],
+	
 	// Мониторинговый таймер который будет уведомлять если какие-то модули ещё не загрузились
 	_monitoringTimer: undefined,
+	
+	// Таймер полной загрузки
+	_completeTimer: undefined,
 
 	// Настройки
 	_options: {
@@ -62,26 +62,44 @@ TOM.boot =
 		cache: true // Разрешено ли кеширование скриптов
 	},
 
-	// Логирование при debug.boot = true
-	log: function( args )
+	/* Логирование
+	 */
+	_log: function( type, msg )
 	{
-		if( this._debug.log && window.console !== undefined )
-		{
-			console.log( args );
-		}
+		TOM._log( 'boot', type, msg );
+		return this;
 	},
-
-	// Ошибка
-	error: function( state, e )
+	
+	/* Вывод исключения/ошибки
+	 */
+	_error: function( errorMsg, errorObj )
 	{
-		if( e !== undefined && e.data !== undefined )
-		{
-			throw new Error( 'TOM.boot: Ошибка ( "' + state + '" ) при загрузке файла - "' + e.data.src + '".', e );
-		}
-		else
-		{
-			throw new Error( state );
-		}
+		TOM._error( 'boot', errorMsg, errorObj );
+		return this;
+	},
+	
+	/* Вызов обработчика события
+	 */
+	_triggerCallback: function( event, args )
+	{
+		TOM._triggerCallback( 'boot', event, args );
+		return this;
+	},
+	
+	/* Обработка событий
+	 */
+	callback: function( event, callback )
+	{
+		TOM._callback( 'boot', event, callback );
+		return this;
+	},
+		
+	/* Удаление обработчика
+	 */
+	removeCallback: function( event )
+	{
+		TOM._removeCallback( 'boot', event );
+		return this;
 	},
 
 	/* Установка параметров скрипта
@@ -111,7 +129,8 @@ TOM.boot =
 		// Формирование списка
 		var context = this,
 			names = names instanceof Array ? names : [ names ],
-			loadList = this._prepareModuleList( names, dir );
+			loadList = this._prepareModuleList( names, dir ),
+			callback = ( callback instanceof Function ) ? callback : function( ) { };
 
 		// Проходим по списку загрузок
 		for( var i in loadList )
@@ -137,10 +156,10 @@ TOM.boot =
 
 		// Формируем список для колбека
 		// Колбек должен вызваться только после полной загрузки всех модулей из списка modules
-		this._callbackList.push( { modules: names, callback: callback } );
+		this._modulesCallbackList.push( { type: 'modules', modules: names, callback: callback } );
 
 		// Запускаем мониторинговый таймер если он ещё не запущен
-		if( context._monitoringTimer === undefined )
+		if( this._monitoringTimer === undefined )
 		{
 			this._monitoringTimer = setTimeout( function checkNotLoadTimerFunc( )
 			{
@@ -154,6 +173,12 @@ TOM.boot =
 				}
 			},
 			10000 );
+		}
+		
+		// Очищаем таймер окончания загрузки
+		if( this._completeTimer === undefined )
+		{
+			clearTimeout( this._completeTimer );
 		}
 
 		//
@@ -174,7 +199,8 @@ TOM.boot =
 		// Проверяем есть ли у нас такой модуль
 		if( moduleData === undefined )
 		{
-			throw new Error( 'TOM.boot: Модуль с названием "' + moduleName + '" не существует!' );
+			this._error( 'TOM.boot: Модуль с названием "' + moduleName + '" не существует!' );
+			return;
 		}
 
 		// Состояние загрузки модуля - начали загрузку
@@ -196,7 +222,7 @@ TOM.boot =
 		// Копируем список модулей
 		moduleData.files = TOM._clone( loadList );
 
-		// Проходим по списку файло и запоминаем зависимости
+		// Проходим по списку файлов и запоминаем зависимости
 		for( var r in moduleData.files )
 		{
 			var fileData = moduleData.files[r], 
@@ -226,13 +252,15 @@ TOM.boot =
 			// Проверяем расширение
 			if( !/\.(js|css)$/.test( fileData.file ) )
 			{
-				throw new Error( 'TOM.boot: В очередь загрузки подано имя файла без расширения - ' + fileData.file );
+				this._error( 'TOM.boot: В очередь загрузки подано имя файла без расширения - ' + fileData.file );
+				return;
 			}
 
 			// Смотрим чтоб в названии файла небыло кирилических символов
 			if( ( /^([а-яА-Я])/gi ).test( fileData.file ) )
 			{
-				throw new Error( 'TOM.boot: В очередь загрузки подано имя файла с кирилическими символами - ' + fileData.file );
+				this._error( 'TOM.boot: В очередь загрузки подано имя файла с кирилическими символами - ' + fileData.file );
+				return;
 			}
 
 			// Состояние загрузки - "не установлено"
@@ -293,7 +321,7 @@ TOM.boot =
 			// В списке зависимостей модуля - возможно не верное имя
 			if( !/\.(js|css)(?:_|)$/.test( requireModuleName ) && /\.(.*?)$/.test( requireModuleName ) )
 			{
-				console.warn( 'TOM.boot: Возможно в список зависимостей модуля: "' + moduleData.name + '" подано имя файла без расширения - "' + requireModuleName + '"');
+				this._log( 'warn', 'TOM.boot: Возможно в список зависимостей модуля: "' + moduleData.name + '" подано имя файла без расширения - "' + requireModuleName + '"');
 			}
 			else if( /\.js$/.test( requireModuleName ) )
 			{
@@ -335,7 +363,8 @@ TOM.boot =
 			// Смотрим чтоб в названии файла небыло кирилических символов
 			if( typeof name === 'string' && ( /^([а-яА-Я])/gi ).test( name ) )
 			{
-				throw new Error( 'TOM.boot: В очередь загрузки подано имя файла с кирилическими символами - ' + name );
+				this._error( 'TOM.boot: В очередь загрузки подано имя файла с кирилическими символами - ' + name );
+				return;
 			}
 
 			// Директория в которой находится загружаемый файл			
@@ -395,7 +424,7 @@ TOM.boot =
 			context._fileLoadedStates[ data.file ] = state;
 
 			// Вызываем оригинальный колбек
-			if( typeof callback === 'function' )
+			if( callback instanceof Function )
 			{
 				callback( state, data );
 			}
@@ -413,7 +442,8 @@ TOM.boot =
 		}
 		else
 		{
-			throw new Error( 'TOM.boot: Не верный тип загружаемого файла - "' + fileData.type + '"!' );
+			this._error( 'TOM.boot: Не верный тип загружаемого файла - "' + fileData.type + '"!' );
+			return;
 		}
 
 		//
@@ -449,7 +479,7 @@ TOM.boot =
 				this.onerror = null;
 
 				// Возвращаем результат через коллбек
-				if( typeof callback === 'function' )
+				if( callback instanceof Function )
 				{
 					callback.call( context, 'complete', fileData );
 				}
@@ -471,7 +501,7 @@ TOM.boot =
 				this.onerror = null;
 
 				// Возвращаем результат через коллбек
-				if( typeof callback === 'function' )
+				if( callback instanceof Function )
 				{
 					callback.call( context, 'error', fileData );
 				}
@@ -491,7 +521,7 @@ TOM.boot =
 				script.done = true;
 
 				// Возвращаем результат через коллбек
-				if( typeof callback === 'function' )
+				if( callback instanceof Function )
 				{
 					callback.call( context, 'timeout', fileData );
 				}
@@ -532,7 +562,7 @@ TOM.boot =
 				if( style.sheet && style.sheet.cssRules && style.sheet.cssRules.length )
 				{
 					//
-					if( typeof callback === 'function' )
+					if( callback instanceof Function )
 					{
 						callback.call( context, 'complete', fileData );
 					}
@@ -545,7 +575,7 @@ TOM.boot =
 					style.done = true;
 
 					//
-					if( typeof callback === 'function' )
+					if( callback instanceof Function )
 					{
 						callback.call( context, 'error', fileData );
 					}
@@ -566,7 +596,7 @@ TOM.boot =
 					this.done = true;
 
 					//
-					if( typeof callback === 'function' )
+					if( callback instanceof Function )
 					{
 						callback.call( context, 'complete', fileData );
 					}
@@ -581,7 +611,7 @@ TOM.boot =
 					this.done = true;
 
 					//
-					if( typeof callback === 'function' )
+					if( callback instanceof Function )
 					{
 						callback.call( context, 'error', fileData );
 					}
@@ -601,7 +631,7 @@ TOM.boot =
 					style.done = true;
 
 					//
-					if( typeof callback === 'function' )
+					if( callback instanceof Function )
 					{
 						callback.call( context, 'timeout', fileData );
 					}
@@ -624,7 +654,7 @@ TOM.boot =
 	{
 		var context = this;
 
-		if( typeof callback === 'function' )
+		if( callback instanceof Function )
 		{
 			if( callback.call( this, count ) !== false && count >= 1 )
 			{
@@ -675,7 +705,7 @@ TOM.boot =
 				}
 				else
 				{
-					console.warn( 'TOM.boot: Прописана не верная зависимость!' );
+					this._log( 'warn', 'TOM.boot: Прописана не верная зависимость!' );
 					continue;
 				}
 
@@ -744,13 +774,8 @@ TOM.boot =
 		}
 		else
 		{
-			throw new Error( 'TOM.boot: В функцию подано не верное имя файла!' );
-		}
-
-		// Если не нашли нужный файл
-		if( checkedFile === undefined )
-		{
-			debugger;
+			this._error( 'TOM.boot: В функцию подано не верное имя файла!' );
+			return;
 		}
 
 		// Проверяем зависимости и возвращаем результат
@@ -819,7 +844,7 @@ TOM.boot =
 			// Проверяем - нашли ли мы модуль
 			if( moduleName === undefined )
 			{
-				throw new Error( 'TOM.boot: Не смогли найти модуль с именем: ' + moduleName );
+				this._error( 'TOM.boot: Не смогли найти модуль с именем: ' + moduleName );
 				return;
 			}
 
@@ -856,10 +881,7 @@ TOM.boot =
 				&& requireModulesLoadCount === TOM._objectLength( this._moduleList[ moduleName ].requires ) )
 			{
 				// Выводим лог при необходимости
-				if( this._debug.log )
-				{
-					console.info( 'TOM.boot: Модуль "' +  moduleName + '": загружен полностью' );
-				}
+				this._log( 'info', 'TOM.boot: Модуль "' +  moduleName + '": загружен полностью' );
 				
 				// Проверяем и инициализируем нужные объекты
 				if( this._checkAndInitialize( moduleName ) )
@@ -871,7 +893,7 @@ TOM.boot =
 		}	
 
 		// Вызов коллбеков в случае полной загрузки
-		this._callbacksCall( );
+		this._moduleCallbackCall( );
 	},
 
 	//
@@ -927,21 +949,34 @@ TOM.boot =
 				// Формируем список инициализации
 				if( fileData.initialize !== undefined && fileLoadState !== 'init' )
 				{
-					var initializeList = fileData.initialize instanceof Array ? fileData.initialize : [ fileData.initialize ];
-
-					// Вызываем функцию initialize
-					for( var j in initializeList )
+					// Если прописана анонимная функция для инициализации
+					if( fileData.initialize instanceof Function )
 					{
-						var initFunctionName = initializeList[ j ].replace( /(\*)/g, moduleName );
+						var initState = true,
+							initResult = fileData.initialize( ) || true; 
+						
+						// Удаляем ссылку на функцию
+						delete fileData.initialize( );
+					}
+					// Если прописан перечень функций для инициализации
+					else
+					{
+						var initializeList = fileData.initialize instanceof Array ? fileData.initialize : [ fileData.initialize ];
 
-						if( this._initializeCall( initFunctionName ) )
+						// Вызываем функцию initialize
+						for( var j in initializeList )
 						{
-							this._fileLoadedStates[ filePath ] = 'init';
-						}
-						else
-						{
-							// @todo: Следует сделать проверку на прерывание инициализации
-							console.error( 'TOM.boot: Не смогли инициализировать: ' + initFunctionName );
+							var initFunctionName = initializeList[ j ].replace( /(\*)/g, moduleName );
+
+							if( this._initializeCall( initFunctionName ) )
+							{
+								this._fileLoadedStates[ filePath ] = 'init';
+							}
+							else
+							{
+								// @todo: Следует сделать проверку на прерывание инициализации
+								this._log( 'error', 'TOM.boot: Не смогли инициализировать: ' + initFunctionName );
+							}
 						}
 					}
 				}
@@ -978,11 +1013,12 @@ TOM.boot =
 				// Проверям нашли ли мы нужный объект
 				if( obj === undefined )
 				{
-					throw new Error( 'TOM.boot: Ошибка при поиске объекта инициализации - "' + initializeList[i] + '"!' );
+					this._error( 'TOM.boot: Ошибка при поиске объекта инициализации - "' + initializeList[i] + '"!' );
+					return;
 				}
 
 				/* @toRefact: здесь нужно посмотреть можно ли инициализоровать скрипты с классами ( obj === Function ) */
-				if( ( typeof obj === 'object' || obj instanceof Function ) && obj.initialize instanceof Function )
+				if( ( obj instanceof Object || obj instanceof Function ) && obj.initialize instanceof Function )
 				{
 					initState = true;
 					initResult = obj.initialize( ) || true; 
@@ -993,15 +1029,15 @@ TOM.boot =
 			}
 
 			// Если инициализация не произошла - уведомляем об этом
-			if( initState === false && this._debug.warning )
+			if( initState === false )
 			{
-				if( typeof obj === 'object' && obj.initialize === undefined )
+				if( obj instanceof Object && obj.initialize === undefined )
 				{
-					console.warn( 'TOM.boot: Ошибка при инициализации - "' + initializeList[i] + '". Возможно инициализация происходила ранее!' );
+					this._log( 'warn', 'TOM.boot: Ошибка при инициализации - "' + initializeList[i] + '". Возможно инициализация происходила ранее!' );
 				}
 				else
 				{
-					console.warn( 'TOM.boot: Ошибка при инициализации - "' + initializeList[i] + '". Объект не существует!' );
+					this._log( 'warn',  'TOM.boot: Ошибка при инициализации - "' + initializeList[i] + '". Объект не существует!' );
 				}
 			}
 
@@ -1016,36 +1052,50 @@ TOM.boot =
 	},
 
 	// Запускаем колбеки
-	_callbacksCall: function( )
+	_moduleCallbackCall: function( )
 	{
 		// Вызов коллбеков в случае полной загрузки
-		for( var i in this._callbackList )
+		for( var i in this._modulesCallbackList )
 		{
+			// Если это не callaback модуля - пропускаем
+			if( this._modulesCallbackList[ i ].type !== 'modules' )
+			{
+				continue;
+			}
+			
+			//
 			var moduleInitCount = 0;
 
 			//
-			for( var m in this._callbackList[ i ].modules  )
+			for( var m in this._modulesCallbackList[ i ].modules  )
 			{
-				if( this._moduleLoadedStates[ this._callbackList[ i ].modules[ m ] ] === 'complete' )
+				if( this._moduleLoadedStates[ this._modulesCallbackList[ i ].modules[ m ] ] === 'complete' )
 				{
 					moduleInitCount++;
 				}
 			}
 
 			// Запускаем коллбек если все модули загружены
-			if( ( moduleInitCount === TOM._objectLength( this._callbackList[ i ].modules ) ) && ( this._callbackList[ i ].callback instanceof Function ) )
+			if( ( moduleInitCount === TOM._objectLength( this._modulesCallbackList[ i ].modules ) ) && ( this._modulesCallbackList[ i ].callback instanceof Function ) )
 			{
-				if( this._debug.log )
-				{
-					console.info( 'TOM.boot: ---! Загружены все модули данного этапа !---' );
-				}
+				//
+				this._log( 'info', 'TOM.boot: ---! Загружены все модули данного этапа !---' );
 
 				// Вызываем коллбек
-				this._callbackList[ i ].callback( );
+				this._modulesCallbackList[ i ].callback( );
 
 				// Удаляем коллбек
-				delete this._callbackList[ i ].callback;
+				delete this._modulesCallbackList[ i ];
 			}
+		}
+		
+		// Проверяем оставшиеся коллбеки
+		if( TOM._objectLength( this._modulesCallbackList ) <= 0 )
+		{
+			var context = this;
+			
+			// Запускаем таймер на всякий случай
+			this._completeTimer = setTimeout( function( ) { context._triggerCallback( 'complete' ); }, 500 );
 		}
 	},
 
@@ -1122,19 +1172,19 @@ TOM.boot =
 		// Выводим лог о "не загруженных"
 		if( notLoadedFiles.length > 0 )
 		{
-			console.info( 'TOM.boot: Не загрузились ' + notLoadedFiles.length + ' файлов: ' + notLoadedFiles.join( ', ' )  );
+			this._log( 'info', 'TOM.boot: Не загрузились ' + notLoadedFiles.length + ' файлов: ' + notLoadedFiles.join( ', ' )  );
 		}
 
 		// Выводим лог о "не инициализированных"
 		if( notInitFiles.length > 0 )
 		{
-			console.info( 'TOM.boot: Загрузились но не инициализировались ' + notInitFiles.length + ' файлов: ' + notInitFiles.join( ', ' )  );
+			this._log( 'info', 'TOM.boot: Загрузились но не инициализировались ' + notInitFiles.length + ' файлов: ' + notInitFiles.join( ', ' )  );
 		}
 
 		// Выводим лог о "не загруженных"
 		if( notLoadedModules.length > 0 )
 		{
-			console.info( 'TOM.boot: Не загрузились ' + notLoadedModules.length + ' модулей: ' + notLoadedModules.join( ', ' )  );
+			this._log( 'info', 'TOM.boot: Не загрузились ' + notLoadedModules.length + ' модулей: ' + notLoadedModules.join( ', ' )  );
 		}	
 
 		return ( notLoadedFiles.length > 0 || notLoadedModules.length > 0 || notInitFiles.length > 0 );

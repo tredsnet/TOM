@@ -101,11 +101,48 @@ TOM.classes =
 	 *		]
 	 */
 
-	// Параметры отладки
-	_debug: TOM._options.debug.classes, 
-
 	// Список созданных классов
 	_list: [],
+	
+	/* Логирование
+	 */
+	_log: function( type, msg )
+	{
+		TOM._log( 'classes', type, msg );
+		return this;
+	},
+	
+	/* Вывод исключения/ошибки
+	 */
+	_error: function( errorMsg, errorObj )
+	{
+		TOM._error( 'classes', errorMsg, errorObj );
+		return this;
+	},
+	
+	/* Вызов обработчика события
+	 */
+	_triggerCallback: function( event, args )
+	{
+		TOM._triggerCallback( 'classes', event, args );
+		return this;
+	},
+	
+	/* Обработка событий
+	 */
+	callback: function( event, callback )
+	{
+		TOM._callback( 'classes', event, callback );
+		return this;
+	},
+		
+	/* Удаление обработчика
+	 */
+	removeCallback: function( event )
+	{
+		TOM._removeCallback( 'classes', event );
+		return this;
+	},
 
 	/* Создание класса с нужными параметрами 
 	 * 
@@ -118,7 +155,8 @@ TOM.classes =
 	*/
 	create: function( classScope, className, inheritedClass/*, [@]*/ )
 	{
-		var newClass = undefined,
+		var	context = this,
+			newClass = undefined,
 			classConstructor = undefined,
 			classScopeName = classScope.__scopeName__ || '',
 			realClassScope = undefined,
@@ -137,14 +175,14 @@ TOM.classes =
 		}
 		else
 		{
-			throw new Error( 'TOM.class: Ошибка при создании класса: не указана "область видимости"!' );
+			this._error( 'TOM.class: Ошибка при создании класса: не указана "область видимости"!' );
 			return;	
 		}
 
 		// Проверяем класс от которого собираемся наследоваться
 		if( inheritedClass === undefined )
 		{
-			throw new Error( 'TOM.class: Класс от которого мы собрались наследоваться - не существует!' );
+			this._error( 'TOM.class: Класс от которого мы собрались наследоваться - не существует!' );
 			return;
 		}
 
@@ -167,7 +205,7 @@ TOM.classes =
 			// Или выводим ошибку
 			else if( arguments[ 4 ] !== undefined )
 			{
-				throw new Error( 'TOM.class: Ошибка при создании класса: не верные входные данные!' );
+				this._error( 'TOM.class: Ошибка при создании класса: не верные входные данные!' );
 				return;
 			}
 		}
@@ -181,7 +219,7 @@ TOM.classes =
 			// Если первым елементом является не функция - выдаём ошибку
 			if( !( classConstructor instanceof Function ) )
 			{
-				throw new Error( 'TOM.class: Ошибка при создании класса: не верные входные данные!' );
+				this._error( 'TOM.class: Ошибка при создании класса: не верные входные данные!' );
 				return;
 			}
 		}
@@ -200,20 +238,24 @@ TOM.classes =
 		}
 		else
 		{
-			throw new Error( 'TOM.class: Ошибка при создании класса: не верные входные данные!' );
+			this._error( 'TOM.class: Ошибка при создании класса: не верные входные данные!' );
 			return;
 		}
 
 		// Создаём сам класс
-		newClass = function( )
+		var newClass = function( )
 		{
 			var args = Array.prototype.slice.call( arguments, 1 ),
 				constructorFullName = ( ( this.__classScopeName__ !== '') ? this.__classScopeName__ + '.' + this.__className__ : this.__className__ ) + '.constructor';
 
-			// Дополнительные "костыли" для TOM.processor, которые возволяют определять момент создания класса 
-			TOM.processor.signal( 'pre', constructorFullName, this, args );
+			// Вызываем пред-обработчик конструктора
+			context._triggerCallback( 'pre-constructor', [ constructorFullName, args ] );
+			
+			// Вызываем конструктор
 			classConstructor.apply( this, arguments );
-			TOM.processor.signal( 'post', constructorFullName, this, args );
+			
+			// Вызываем пост-обработчик конструктора
+			context._triggerCallback( 'post-constructor', [ constructorFullName, args ] );
 		};
 
 		// Дополнительно прописываем конструктор класса
@@ -231,7 +273,7 @@ TOM.classes =
 		newClass.prototype.__checkClassName__ = function( className, checkParent )
 		{
 			// Сверяем имя класса
-			var checkedName = ( ( this.__classScopeName__ !== '') ? this.__classScopeName__ + '.' + this.__className__ : this.__className__ ),
+			var checkedName = ( ( this.__classScopeName__ !== '' ) ? this.__classScopeName__ + '.' + this.__className__ : this.__className__ ),
 				checkState = ( checkedName === className );
 
 			// Проверяем имя класса по цепочке родителей
@@ -246,7 +288,7 @@ TOM.classes =
 					if( parentClass !== undefined )
 					{
 						// Считываем полное имя класса родителя
-						parentCheckedClassName = ( parentClass.__classScopeName__ !== '') ? parentClass.__classScopeName__ + '.' + parentClass.__className__ : parentClass.__className__;
+						parentCheckedClassName = ( parentClass.__classScopeName__ !== '' ) ? parentClass.__classScopeName__ + '.' + parentClass.__className__ : parentClass.__className__;
 
 						// Проверяем совпадение имени класса родителя
 						if( parentCheckedClassName === className )
@@ -298,9 +340,9 @@ TOM.classes =
 				{
 					newClass.prototype[ functionName ] = functionList[ indexOrName ]; 
 				}
-				else if( this._debug.warning )
+				else
 				{
-					console.warn( 'TOM.class: При создании класса не удалось скопировать параметр/функцию - не правильное имя!' );
+					this._log( 'warn',  'TOM.class: При создании класса не удалось скопировать параметр/функцию - не правильное имя!' );
 				}
 			}
 		}
@@ -320,10 +362,10 @@ TOM.classes =
 
 		// Добавляем класс в список
 		this._list[ newClass.__classFullName__ ] = newClass;
-
-		// Проксируем созданный и уже унаследованный класс
-		TOM.processor.proxy( newClass, newClass.__classFullName__ );
-
+		
+		// Вызываем обработчик создания класса
+		context._triggerCallback( 'create', [ newClass ] );
+		
 		// Возвращаем созданный класс
 		return newClass;
 	},
@@ -333,13 +375,13 @@ TOM.classes =
 	 * @childClass {объект/функция} - Класс которому необходимо произвести наследование
 	 * @parentClass {объект/функция} - Класс от которого нужно произвести наследование
 	 * @return {Boolean}
-	 */
+	*/
 	inherit: function( childClass, parentClass )
 	{
 		// Если первым елементом является не функция - выдаём ошибку
 		if( parentClass === undefined || parentClass === '' )
 		{
-			throw new Error( 'Ошибка при наследовании класса: родитель не указан или не создан!' );
+			this._error( 'Ошибка при наследовании класса: родитель не указан или не создан!' );
 			return;
 		}
 
@@ -347,7 +389,7 @@ TOM.classes =
 		var parentName = parentClass.__className__ || parentClass.name || '';
 		if( parentName === '' )
 		{
-			throw new Error( 'Ошибка при наследовании класса: у класса нет имени!' );
+			this._error( 'Ошибка при наследовании класса: у класса нет имени!' );
 			return;
 		}
 
@@ -378,12 +420,12 @@ TOM.classes =
 			//
 			else if( parameterName === '' )
 			{
-				console.warn( this.__className__ + ': Не указано имя параметра/функции!' );
+				this._log( 'warn',  this.__className__ + ': Не указано имя параметра/функции!' );
 			}
 			//
 			else
 			{
-				console.warn( this.__className__ + ': Параметр/функция "' + parameterName + '" не существует!' );
+				this._log( 'warn',  this.__className__ + ': Параметр/функция "' + parameterName + '" не существует!' );
 			}
 		};
 
@@ -395,7 +437,7 @@ TOM.classes =
 
 			if( !( callFunction instanceof Function ) )
 			{
-				console.warn( this.__className__ + ': Функции "' + functionName + '" не существует' );
+				this._log( 'warn',  this.__className__ + ': Функции "' + functionName + '" не существует' );
 				return;
 			}
 
@@ -418,11 +460,11 @@ TOM.classes =
 			}
 			else if( callerFunction === '' )
 			{
-				console.warn( this.__className__ + ': У вызывающей функции нет имени!' );
+				this._log( 'warn',  this.__className__ + ': У вызывающей функции нет имени!' );
 			}
 			else
 			{
-				console.warn( this.__className__ + ': Функции "' + callerFunction + '" не существует!' );
+				this._log( 'warn',  this.__className__ + ': Функции "' + callerFunction + '" не существует!' );
 			} 
 		};
 

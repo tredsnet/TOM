@@ -1,27 +1,87 @@
 // Проксирование функций
 TOM.processor =
 {
-	// Параметры отладки
-	_debug: TOM._options.debug.processor,
-
 	// Список "обработчиков"
 	_handlers: [],
-
-	// Установка обработчика событий на выполнение функций/сигналов
+	
+	/* Логирование
+	 */
+	_log: function( type, msg )
+	{
+		TOM._log( 'processor', type, msg );
+		return this;
+	},
+	
+	/* Вывод исключения/ошибки
+	 */
+	_error: function( errorMsg, errorObj )
+	{
+		TOM._error( 'processor', errorMsg, errorObj );
+		return this;
+	},
+	
+	/* Вызов обработчика события
+	 */
+	_triggerCallback: function( event, args )
+	{
+		TOM._triggerCallback( 'processor', event, args );
+		return this;
+	},
+	
+	/* Обработка событий
+	 */
+	callback: function( event, callback )
+	{
+		TOM._callback( 'processor', event, callback );
+		return this;
+	},
+		
+	/* Удаление обработчика
+	 */
+	removeCallback: function( event )
+	{
+		TOM._removeCallback( 'processor', event );
+		return this;
+	},
+	
+	/* Установка обработчика событий на выполнение функций/сигналов
+	 * 
+	 * @name {строка} - обрабатываемая функция
+	 * @handler {функция} - функция обработчик
+	 * @params {строка|объект} - параметры обработчика
+	 * @returns {TOM.processor|undefined}
+	 */
 	bind: function( name, handler, params )
 	{
 		// Обработка не верных данных
-		if( typeof handler === 'undefined' || typeof handler.constructor !== 'function' )
+		if( handler === undefined || !( handler.constructor instanceof Function ) )
 		{
-			throw new Error( 'TOM.processor.bind: Подана не верная функция-обработчик - ' + name );
+			this.error( 'TOM.processor.bind: Подана не верная функция-обработчик - ' + name );
 			return;
 		}
 
 		// Инициализируем параметры
 		var params = params || { priority: '' };
 
+		// Если в качестве имени фукции - объект - разбираем его
+		if( name instanceof Object 
+				&& ( name.pre !== undefined || name.post !== undefined ) )
+		{
+			var preNames = ( name.pre instanceof Array ) ? name.pre : [ name.pre ],
+				postNames = ( name.post instanceof Array ) ? name.post : [ name.post ];
+			
+			for( var i in preNames )
+			{
+				this.bind( 'pre-' + preNames[i].trim( ), handler, params );
+			}
+			
+			for( var j in postNames )
+			{
+				this.bind( 'post-' + postNames[j].trim( ), handler, params );
+			}
+		}
 		// Если в качестве имени у нас строка - проверяем не записано ли там несколько имён
-		if( typeof name === 'string' && ( name.indexOf( ' ' ) > -1 || name.indexOf( ',' ) > -1 ) )
+		else if( typeof name === 'string' && ( name.indexOf( ' ' ) > -1 || name.indexOf( ',' ) > -1 ) )
 		{
 			var names = ( name.indexOf( ' ' ) > -1 && name.indexOf( ',' ) <= 0 ) ? name.split( ' ' ) : name.split( ',' );
 
@@ -30,6 +90,7 @@ TOM.processor =
 				this.bind( names[i].trim( ), handler, params );
 			}
 		}
+		// Стандартная обработка
 		else
 		{
 			var stage = params.stage || 'pre',
@@ -39,7 +100,7 @@ TOM.processor =
 							( ( typeof params === 'string' ) ? params : '' );
 
 			// Если у нас состояние выставлено непосредственно в строке - ему и приоритет
-			if( typeof name === 'string' )
+			if( typeof name === 'string'  )
 			{
 				if( name.indexOf( 'post-' ) === 0 )
 				{
@@ -55,13 +116,13 @@ TOM.processor =
 			// Проверка наличия имён
 			if( name === undefined || name === '' )
 			{
-				throw new Error( 'TOM.processor.bind: Подано не верное имя обрабатываемой функции - ' + name );
+				this.error( 'TOM.processor.bind: Подано не верное имя обрабатываемой функции - ' + name );
 				return;
 			}
 			// Смотрим чтоб в названии небыло кирилических символов
 			else if( ( /^([а-яА-Я])/gi ).test( name ) )
 			{
-				throw new Error( 'TOM.processor.bind: Подано имя обрабатываемой функции с кирилическими символами - ' + name );
+				this.error( 'TOM.processor.bind: Подано имя обрабатываемой функции с кирилическими символами - ' + name );
 				return;
 			}
 
@@ -70,17 +131,15 @@ TOM.processor =
 			{
 				if( this._handlers[ name ][i] === handler )
 				{
-					if( this._debug.warning ) // Выводим сообщение о том что повторно навешиваемся ( необходимо для дебага )
-					{
-						console.warn( 'TOM.processor.bind: Повторяющийся слушатель - ' + name );
-					}
+					// Выводим сообщение о том что повторно навешиваемся ( необходимо для дебага )
+					this._log( 'warn',  'TOM.processor.bind: Повторяющийся слушатель - ' + name );
 
 					return;
 				}
 			}
 
 			// Проверяем существует ли вообще функция на которую мы хотим - "навеситься" ( необходимо для дебага )
-			if( this._debug.warning )
+			if( TOM._options[ 'processor' ].warning )
 			{
 				var error = false;
 
@@ -105,7 +164,7 @@ TOM.processor =
 				// Если ничего не вышло, сообщаем об этом консоль
 				if( error )
 				{	
-					console.warn( 'TOM.processor.bind: Слушатель цепляется на несуществующую ( или ещё не инициализированную ) функцию - ' + name );
+					this._log( 'warn',  'TOM.processor.bind: Слушатель цепляется на несуществующую ( или ещё не инициализированную ) функцию - ' + name );
 				}
 			}
 
@@ -122,14 +181,20 @@ TOM.processor =
 		return this;
 	},
 
-	// Снятие обработчика событий
+	/* Снятие обработчика событий
+	 * 
+	 * @name {строка} - обрабатываемая функция
+	 * @handler {функция|строка} - функция или идентификатор снимаемого обработчика
+	 * @params {type} - параметры снимаемого обработчика
+	 * @returns {TOM.processor|undefined}
+	 */
 	unbind: function( name, handler, params )
 	{
 		var params = params || {},
 			stage = params.stage || 'pre';
 
 		// Если у нас состояние выставлено непосредственно в строке - ему и приоритет
-		if( typeof name === 'string')
+		if( typeof name === 'string' )
 		{
 			if( name.indexOf( 'post-' ) === 0 )
 			{
@@ -141,7 +206,8 @@ TOM.processor =
 		// Смотрим чтоб в названии небыло кирилических символов
 		if( ( /^([а-яА-Я])/gi ).test( name ) )
 		{
-			throw new Error( 'TOM.processor.unbind: Подано название с кирилическими символами - ' + name );
+			this.error( 'TOM.processor.unbind: Подано название с кирилическими символами - ' + name );
+			return;
 		}
 
 		// Смотрим есть ли handler такого события
@@ -150,7 +216,7 @@ TOM.processor =
 			for( var i in this._handlers[ name ] )
 			{
 				var mainHandler = ( typeof handler === 'string' ) ? ( this._handlers[ name ][i].label || this._handlers[ name ][i].handler.name ) : this._handlers[ name ][i].handler,
-					checkHandler = ( ( ( typeof handler === 'string' || typeof handler === 'function' ) && mainHandler === handler ) || handler === undefined ) ? true : false;
+					checkHandler = ( ( ( typeof handler === 'string'  || handler instanceof Function ) && mainHandler === handler ) || handler === undefined ) ? true : false;
 
 				if( checkHandler && this._handlers[ name ][i].stage === stage )
 				{
@@ -168,7 +234,13 @@ TOM.processor =
 		return this;
 	},
 
-	// Установка "одноразового" обработчика события
+	/* Установка "одноразового" обработчика события
+	 * 
+	 * @name {строка} - обрабатываемая функция
+	 * @handler {функция} - функция обработчик
+	 * @params {строка|объект} - параметры обработчика
+	 * @returns {TOM.processor}
+	 */
 	one: function( name, handler, params )
 	{
 		var context = this,
@@ -189,7 +261,14 @@ TOM.processor =
 		return this;
 	},
 
-	// Сигнал для обработчиков
+	/* Сигнал/триггер для обработчиков
+	 * 
+	 * @stage {pre|post} - этап выполнения функции
+	 * @name {строка} - имя функции
+	 * @sender {объект} - "отправитель"
+	 * @args {массив} - аргументы
+	 * @returns {TOM.processor|undefined|Boolean}
+	 */
 	signal: function( stage, name, sender, args )
 	{
 		// 
@@ -206,7 +285,7 @@ TOM.processor =
 		this._handlers[ name ].sort( function( a, b )
 		{
 			if( a.priority === 'begin' && b.priority !== 'begin' ) { return 1; }
-			else if( a.priority !== 'begin' && b.priority === 'begin' ) { return -1; }
+				else if( a.priority !== 'begin' && b.priority === 'begin' ) { return -1; }
 
 			return 0;
 		} );
@@ -214,7 +293,7 @@ TOM.processor =
 		// Проходим по всем имеющимся обработчикам
 		for( var i in this._handlers[ name ] )
 		{
-			if( typeof this._handlers[ name ][i].handler === 'function' && this._handlers[ name ][i].stage === stage )
+			if( this._handlers[ name ][i].handler instanceof Function && this._handlers[ name ][i].stage === stage )
 			{
 				var handler = this._handlers[ name ][i].handler, // Вызываемый метод
 					label = this._handlers[ name ][i].label, // 
@@ -244,7 +323,7 @@ TOM.processor =
 					returnParam:
 					true - снимаем обработчик
 					false - прерываем дальнейшую обработку */
-				if( typeof returnParam === 'boolean' )
+				if( returnParam instanceof Boolean )
 				{
 					command = ( returnParam === false ) ? 'break' : 'unbind';
 				}
@@ -262,20 +341,14 @@ TOM.processor =
 					this.unbind( name, this._handlers[ name ][i].handler, { stage: this._handlers[ name ][i].stage, label: label } );
 
 					// Выводим сообщение о том что мы прервали bind ( необходимо для дебага )
-					if( this._debug.log ) 
-					{
-						console.info( 'TOM.processor: Контролируемый unbind - ' + name + ( label !== '' ? ', ( метка: ' + label + ' )' : '' ) );
-					}
+					this._log( 'info',  'TOM.processor: Контролируемый unbind - ' + name + ( label !== '' ? ', ( метка: ' + label + ' )' : '' ) );
 				}
 
 				// Передаём данные о прерывании - дальнейшей работы обработчика
 				if( command.indexOf( 'break' ) > -1  )
 				{
 					// Выводим сообщение 
-					if( this._debug.log ) 
-					{
-						console.info( 'TOM.processor: Прерываем дальнейшее выполнение обработчика - ' + name + ( label !== '' ? ', ( метка: ' + label + ' )' : '' ) );
-					}
+					this._log( 'info',  'TOM.processor: Прерываем дальнейшее выполнение обработчика - ' + name + ( label !== '' ? ', ( метка: ' + label + ' )' : '' ) );
 
 					// Прерываем дальнейшую обработку
 					return false;
@@ -287,13 +360,16 @@ TOM.processor =
 	},
 
 	/* Проксирование
-	* @object - 
-	* @parent -
+	 *
+	 * @object {объект} - проксируемый объект
+	 * @parent {объект} - родитель данного объекта ( для верного определения вызовов )
+	 * @returns {}
 	*/
 	proxy: function( object, parent, any )
 	{
 		var context = this;
 
+		// 
 		this._proxyObject
 		(
 			object,
@@ -329,7 +405,7 @@ TOM.processor =
 						} */
 
 						// Конструктор и всё связанное с наследованием - пропускаем
-						if( typeof method.prototype[ name ] !== 'function'
+						if( !( method.prototype[ name ] instanceof Function )
 							|| name === '__checkClassName__'
 							|| name.indexOf( '__parent' ) === 0 ) 
 						{
@@ -353,9 +429,13 @@ TOM.processor =
 		return this;
 	},
 
-/* "Приватные" методы */
+/*
+ *  "Приватные" методы 
+ */
 
-	// Проксирование методов конкретного объекта переданной оберткой ( оно глубокое )
+	/* Проксирование методов конкретного объекта переданной оберткой ( оно глубокое )
+	 * 
+	 */
 	_proxyObject: function( object, proxyCallback, parent, args, any )
 	{
 		// Глубокое проксирование ( проксируем только стандартные объекты )
@@ -373,7 +453,7 @@ TOM.processor =
 				}
 
 				// Проксируем содержимое
-				if( typeof object[ member ] === 'function' )
+				if( object[ member ] instanceof Function )
 				{
 					object[ member ] = proxyCallback( object[ member ], ( parentName ? parentName + '.' : '' ) + member, args ) || object[ member ];
 				}
@@ -386,7 +466,9 @@ TOM.processor =
 		}
 	},
 
-	// Конкретный прокси для того, чтобы добавить сигналирование методу
+	/* Конкретный прокси для того, чтобы добавить сигналирование методу
+	 * 
+	 */
 	_signalProxy: function( method, methodName )
 	{
 		var context = this,
@@ -399,12 +481,12 @@ TOM.processor =
 				{	
 					var mainResult = method.apply( this, arguments ), // Вызываем основную процедуру
 						postResult = context.signal( 'post', methodName, this, arguments ); // Вызываем постобработчик
-						// @todo: добавить возможность подмены результата в постобработчике
+						// @todo: добавить возможность подмены результата в пост-обработчике
 
 					return mainResult;
 				}
 			};
 
-			return callback;
+		return callback;
 	}
 };
