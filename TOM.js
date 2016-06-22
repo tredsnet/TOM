@@ -1748,7 +1748,7 @@
 						returnParam:
 						true - снимаем обработчик
 						false - прерываем дальнейшую обработку */
-					if( returnParam instanceof Boolean )
+					if( typeof returnParam === 'boolean' )
 					{
 						command = ( returnParam === false ) ? 'break' : 'unbind';
 					}
