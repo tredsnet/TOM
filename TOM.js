@@ -1,55 +1,65 @@
 /**
  * TOM - Библиотека для реализации модульных приложений
- * @version v1.0.0
+ * @version v1.1.0
  * @link https://github.com/tredsnet/TOM
  * @license Apache 2.0
- * @author TREDS.NET (http://www.treds.net)
+ * @author Borisenko Vladimir ( TREDS.NET )
  */
 
-(function( window )
+( function( window )
 {
-	// Инициализируем системные области видимости
+	/* Инициализируем системные области видимости
+	 */
 	var scopeList = [ 'core', 'interface' ];
 	for( var i in scopeList )
 	{
 		window[ scopeList[ i ] ] = { __scopeName__: scopeList[ i ] };
 	}
 	
-	// Инициализируем объект TOM
+	/* Инициализируем объект TOM
+	 */
 	var TOM = 
 		window.TOM = 
 	{
+		/* Спец. параметры для модулей
+		 */
 		_options: 
 		{
-			/* Контроль и логирование работы модулей
-			 * Вместо каждого из пунктов можно передавать булевую true/false для передачи такого параметра и наследникам */
-			debug:
-			{ 
-				main: true,
-
-				boot: { // Загрузка модулей/библиотек
-					log: true,
-					warning: true
-				},
-
-				classes: { // Конструктор классов и наследование
-					log: false,
-					warning: true
-				},
-
-				processor: { // Обработчик/перехватчик событий
-					log: true,
-					warning: true
-				},
-
-				commutator: { // Общение с сервером			
-					log: false,
-					warning: true
-				}
+			// Загрузка модулей/библиотек
+			boot: { 
+				log: true,
+				warning: true,
+				allowEvents: [ 'complete' ]
+			},
+			// Конструктор классов и наследование
+			classes: { 
+				log: false,
+				warning: true,
+				allowEvents: [ 'create', 'pre-constructor', 'post-constructor' ]
+			},
+			// Обработчик/перехватчик событий
+			processor: { 
+				log: true,
+				warning: true,
+				allowEvents: [ ]
+			},
+			// Общение с сервером		
+			commutator: { 	
+				log: false,
+				warning: true,
+				allowEvents: [  ]
 			}
 		},
 		
-		// Клонирование объекта
+		/* Список функций с обратным вызовом
+		 */
+		_callbackList: [ ],
+		
+		/* Клонирование объекта
+		 * 
+		 * @param {type} obj
+		 * @returns {Array|main_L1._clone.copy|window.TOM._clone.copy}
+		 */
 		_clone: function( obj )
 		{
 			if( obj === null || typeof obj !== 'object'  )
@@ -98,6 +108,11 @@
 			throw new Error( 'Не удаётся скопировать объект! Не поддерживаемый формат.' );
 		},
 		
+		/* Подтсчёт размера объекта/массива
+		 * 
+		 * @obj {объект|массив}
+		 * @returns {число}
+		 */ 
 		_objectLength: function( obj )
 		{
 			var count = 0; 
@@ -105,21 +120,127 @@
 			for( var i in obj ) { count++; };
 			
 			return count;
+		},
+		
+		/* Логирование
+		 * 
+		 * @module {строка} - вызывающий модуль
+		 * @type {строка} - тип сообщения
+		 * @msg {строка} - сообщение
+		 * @returns {}
+		 */
+		_log: function( module, type, msg )
+		{
+			// Пытаемся вызвать коллбек
+			if( this._callbackList !== undefined && this._callbackList[ 'log' ] instanceof Function )
+			{
+				this._callbackList[ 'log' ].apply( this, [ type, msg ] );
+			}
+			// Если функции нет - и нужно логирование - выводим данные в консоль
+			else if( this._options[ module ].log && window.console !== undefined )
+			{
+				console[ type ]( msg );
+			}
+			
+			return this;
+		},
+
+		/* Вывод исключения/ошибки
+		 * 
+		 * @module {строка} - вызывающий модуль
+		 * @errorMsg {строка} - сообщение об ошибке
+		 * @errorObj {объект} - объект ошибки
+		 * @returns {}
+		 */
+		_error: function( module, errorMsg, errorObj )
+		{
+			// Формируем сообщение
+			var msg = ( errorObj !== undefined && errorObj.data !== undefined ) ? 'Ошибка ( "' + errorMsg + '" ) - "' + errorObj.data.src + '".' : errorMsg;
+
+			// Вызов обработчика если он есть
+			if( this._callbackList !== undefined && this._callbackList[ 'error' ] instanceof Function )
+			{
+				this._callbackList[ 'error' ].apply( this, [ msg, errorObj ] );
+			}
+			// Вызов ошибки
+			else
+			{
+				throw new Error( msg, errorObj );
+			}
+			
+			return this;
+		},
+		
+		/* Обрабтка событий
+		 * События устанавливаются единоразово ( затираются при новой установке )
+		 * 
+		 * @allowEvents {строка} - разрешённые имена событий
+		 * @event {строка} - событие которое необходимо обрабатывать
+		 * @callback {функция} - обработчик
+		 * @returns {}
+		 */
+		_callback: function( module, event, callback )
+		{
+			var allowEvents = ( this._options[ module ].allowEvents || [] ).concat( [ 'log', 'error' ] );
+			
+			// Проверяем входящие данные
+			if( ( allowEvents.indexOf( event ) < 0 )
+				|| !( callback instanceof Function ) )
+			{
+				this.error( 'Ошибка при установке обработчика событий!' );
+				return;
+			}
+
+			// Добавляем обработчик событий
+			return this._callbackList.push( { module: module, event: event, callback: callback } );
+		},
+
+		/* Вызов обработчика событий
+		 * 
+		 * @module {строка} - имя модуля
+		 * @event {строка} - событие которое необходимо вызвать
+		 * @returns {}
+		 */
+		_triggerCallback: function( module, event, args )
+		{
+			for( var i in this._callbackList )
+			{
+				if( this._callbackList[ i ].module === module && this._callbackList[ i ].event === event )
+				{
+					if( this._callbackList[ i ].callback instanceof Function )
+					{
+						this._callbackList[ i ].callback.apply( TOM[ module ], args );
+					}
+				}
+			}
+			
+			return this;
+		},
+		
+		/* Снятие обработчика событий
+		 * 
+		 * @event {строка} - событие которое необходимо обрабатывать
+		 * @returns {}
+		 */
+		_removeCallback: function( event )
+		{
+			delete this._callbackList[ event ];
+			return this;
 		}
 	};	
-	
+
 	// Динамическая загрузка библиотек/модулей
 	TOM.boot =
 	{
 		/*
 		 * @ToDO:
-		 * 1. ? Сделать callback окончания полной загрузки всех модулей ( после того как убедились что всё загрузили - сами вызываем boot.Complete - и срабатывает колбек )
-		 * 2. ? Инициализировать скрипты только после полной загрузки всех модулей.
-		 * 3. ? Сделать параметр инициализации приложения - "по окончанию загрузки" ( инициализировать когда сработал - boot.complete )
-		 * 4. ? Загружать вначале модули/файлы без зависимостей
-		 * 5. ? Ускорить работу _requireCheck
-		 * 6. ? Добавить проверку на существование модуля/файла из списка зависимостей
-		 * 7. Инициализация должна проходить с учётом зависимостей
+		 * 1. (+) Сделать callback окончания полной загрузки всех модулей ( после того как убедились что всё загрузили - сами вызываем boot.Complete - и срабатывает колбек )
+		 * 2. ( ) Инициализировать скрипты только после полной загрузки всех модулей.
+		 * 3. ( ) Сделать параметр инициализации приложения - "по окончанию загрузки" ( инициализировать когда сработал - boot.complete )
+		 * 4. ( ) Загружать вначале модули/файлы без зависимостей
+		 * 5. ( ) Ускорить работу _requireCheck
+		 * 6. ( ) Добавить проверку на существование модуля/файла из списка зависимостей
+		 * 7. ( ) Инициализация должна проходить с учётом зависимостей
 		 */
 	
 		/* @toRefact: 
@@ -148,9 +269,6 @@
 		  * TOM.boot.load( '', 'https://code.jquery.com/jquery-1.12.0.min.js', function( ){ } );
 		  */
 	
-		// Параметры отладки
-		_debug: TOM._options.debug.boot, 
-	
 		// Общий список модулей со всеми данными
 		_moduleList: [],
 	
@@ -161,10 +279,13 @@
 		_fileLoadedStates: [],
 	
 		// Колбек должен вызваться только после полной загрузки всех модулей из данного списка
-		_callbackList: [],
-	
+		_modulesCallbackList: [],
+		
 		// Мониторинговый таймер который будет уведомлять если какие-то модули ещё не загрузились
 		_monitoringTimer: undefined,
+		
+		// Таймер полной загрузки
+		_completeTimer: undefined,
 	
 		// Настройки
 		_options: {
@@ -172,26 +293,44 @@
 			cache: true // Разрешено ли кеширование скриптов
 		},
 	
-		// Логирование при debug.boot = true
-		log: function( args )
+		/* Логирование
+		 */
+		_log: function( type, msg )
 		{
-			if( this._debug.log && window.console !== undefined )
-			{
-				console.log( args );
-			}
+			TOM._log( 'boot', type, msg );
+			return this;
 		},
-	
-		// Ошибка
-		error: function( state, e )
+		
+		/* Вывод исключения/ошибки
+		 */
+		_error: function( errorMsg, errorObj )
 		{
-			if( e !== undefined && e.data !== undefined )
-			{
-				throw new Error( 'TOM.boot: Ошибка ( "' + state + '" ) при загрузке файла - "' + e.data.src + '".', e );
-			}
-			else
-			{
-				throw new Error( state );
-			}
+			TOM._error( 'boot', errorMsg, errorObj );
+			return this;
+		},
+		
+		/* Вызов обработчика события
+		 */
+		_triggerCallback: function( event, args )
+		{
+			TOM._triggerCallback( 'boot', event, args );
+			return this;
+		},
+		
+		/* Обработка событий
+		 */
+		callback: function( event, callback )
+		{
+			TOM._callback( 'boot', event, callback );
+			return this;
+		},
+			
+		/* Удаление обработчика
+		 */
+		removeCallback: function( event )
+		{
+			TOM._removeCallback( 'boot', event );
+			return this;
 		},
 	
 		/* Установка параметров скрипта
@@ -221,7 +360,8 @@
 			// Формирование списка
 			var context = this,
 				names = names instanceof Array ? names : [ names ],
-				loadList = this._prepareModuleList( names, dir );
+				loadList = this._prepareModuleList( names, dir ),
+				callback = ( callback instanceof Function ) ? callback : function( ) { };
 	
 			// Проходим по списку загрузок
 			for( var i in loadList )
@@ -247,10 +387,10 @@
 	
 			// Формируем список для колбека
 			// Колбек должен вызваться только после полной загрузки всех модулей из списка modules
-			this._callbackList.push( { modules: names, callback: callback } );
+			this._modulesCallbackList.push( { type: 'modules', modules: names, callback: callback } );
 	
 			// Запускаем мониторинговый таймер если он ещё не запущен
-			if( context._monitoringTimer === undefined )
+			if( this._monitoringTimer === undefined )
 			{
 				this._monitoringTimer = setTimeout( function checkNotLoadTimerFunc( )
 				{
@@ -264,6 +404,12 @@
 					}
 				},
 				10000 );
+			}
+			
+			// Очищаем таймер окончания загрузки
+			if( this._completeTimer === undefined )
+			{
+				clearTimeout( this._completeTimer );
 			}
 	
 			//
@@ -284,7 +430,8 @@
 			// Проверяем есть ли у нас такой модуль
 			if( moduleData === undefined )
 			{
-				throw new Error( 'TOM.boot: Модуль с названием "' + moduleName + '" не существует!' );
+				this._error( 'TOM.boot: Модуль с названием "' + moduleName + '" не существует!' );
+				return;
 			}
 	
 			// Состояние загрузки модуля - начали загрузку
@@ -306,7 +453,7 @@
 			// Копируем список модулей
 			moduleData.files = TOM._clone( loadList );
 	
-			// Проходим по списку файло и запоминаем зависимости
+			// Проходим по списку файлов и запоминаем зависимости
 			for( var r in moduleData.files )
 			{
 				var fileData = moduleData.files[r], 
@@ -336,13 +483,15 @@
 				// Проверяем расширение
 				if( !/\.(js|css)$/.test( fileData.file ) )
 				{
-					throw new Error( 'TOM.boot: В очередь загрузки подано имя файла без расширения - ' + fileData.file );
+					this._error( 'TOM.boot: В очередь загрузки подано имя файла без расширения - ' + fileData.file );
+					return;
 				}
 	
 				// Смотрим чтоб в названии файла небыло кирилических символов
 				if( ( /^([а-яА-Я])/gi ).test( fileData.file ) )
 				{
-					throw new Error( 'TOM.boot: В очередь загрузки подано имя файла с кирилическими символами - ' + fileData.file );
+					this._error( 'TOM.boot: В очередь загрузки подано имя файла с кирилическими символами - ' + fileData.file );
+					return;
 				}
 	
 				// Состояние загрузки - "не установлено"
@@ -403,7 +552,7 @@
 				// В списке зависимостей модуля - возможно не верное имя
 				if( !/\.(js|css)(?:_|)$/.test( requireModuleName ) && /\.(.*?)$/.test( requireModuleName ) )
 				{
-					console.warn( 'TOM.boot: Возможно в список зависимостей модуля: "' + moduleData.name + '" подано имя файла без расширения - "' + requireModuleName + '"');
+					this._log( 'warn', 'TOM.boot: Возможно в список зависимостей модуля: "' + moduleData.name + '" подано имя файла без расширения - "' + requireModuleName + '"');
 				}
 				else if( /\.js$/.test( requireModuleName ) )
 				{
@@ -445,7 +594,8 @@
 				// Смотрим чтоб в названии файла небыло кирилических символов
 				if( typeof name === 'string' && ( /^([а-яА-Я])/gi ).test( name ) )
 				{
-					throw new Error( 'TOM.boot: В очередь загрузки подано имя файла с кирилическими символами - ' + name );
+					this._error( 'TOM.boot: В очередь загрузки подано имя файла с кирилическими символами - ' + name );
+					return;
 				}
 	
 				// Директория в которой находится загружаемый файл			
@@ -505,7 +655,7 @@
 				context._fileLoadedStates[ data.file ] = state;
 	
 				// Вызываем оригинальный колбек
-				if( typeof callback === 'function' )
+				if( callback instanceof Function )
 				{
 					callback( state, data );
 				}
@@ -523,7 +673,8 @@
 			}
 			else
 			{
-				throw new Error( 'TOM.boot: Не верный тип загружаемого файла - "' + fileData.type + '"!' );
+				this._error( 'TOM.boot: Не верный тип загружаемого файла - "' + fileData.type + '"!' );
+				return;
 			}
 	
 			//
@@ -559,7 +710,7 @@
 					this.onerror = null;
 	
 					// Возвращаем результат через коллбек
-					if( typeof callback === 'function' )
+					if( callback instanceof Function )
 					{
 						callback.call( context, 'complete', fileData );
 					}
@@ -581,7 +732,7 @@
 					this.onerror = null;
 	
 					// Возвращаем результат через коллбек
-					if( typeof callback === 'function' )
+					if( callback instanceof Function )
 					{
 						callback.call( context, 'error', fileData );
 					}
@@ -601,7 +752,7 @@
 					script.done = true;
 	
 					// Возвращаем результат через коллбек
-					if( typeof callback === 'function' )
+					if( callback instanceof Function )
 					{
 						callback.call( context, 'timeout', fileData );
 					}
@@ -642,7 +793,7 @@
 					if( style.sheet && style.sheet.cssRules && style.sheet.cssRules.length )
 					{
 						//
-						if( typeof callback === 'function' )
+						if( callback instanceof Function )
 						{
 							callback.call( context, 'complete', fileData );
 						}
@@ -655,7 +806,7 @@
 						style.done = true;
 	
 						//
-						if( typeof callback === 'function' )
+						if( callback instanceof Function )
 						{
 							callback.call( context, 'error', fileData );
 						}
@@ -676,7 +827,7 @@
 						this.done = true;
 	
 						//
-						if( typeof callback === 'function' )
+						if( callback instanceof Function )
 						{
 							callback.call( context, 'complete', fileData );
 						}
@@ -691,7 +842,7 @@
 						this.done = true;
 	
 						//
-						if( typeof callback === 'function' )
+						if( callback instanceof Function )
 						{
 							callback.call( context, 'error', fileData );
 						}
@@ -711,7 +862,7 @@
 						style.done = true;
 	
 						//
-						if( typeof callback === 'function' )
+						if( callback instanceof Function )
 						{
 							callback.call( context, 'timeout', fileData );
 						}
@@ -734,7 +885,7 @@
 		{
 			var context = this;
 	
-			if( typeof callback === 'function' )
+			if( callback instanceof Function )
 			{
 				if( callback.call( this, count ) !== false && count >= 1 )
 				{
@@ -785,7 +936,7 @@
 					}
 					else
 					{
-						console.warn( 'TOM.boot: Прописана не верная зависимость!' );
+						this._log( 'warn', 'TOM.boot: Прописана не верная зависимость!' );
 						continue;
 					}
 	
@@ -854,13 +1005,8 @@
 			}
 			else
 			{
-				throw new Error( 'TOM.boot: В функцию подано не верное имя файла!' );
-			}
-	
-			// Если не нашли нужный файл
-			if( checkedFile === undefined )
-			{
-				debugger;
+				this._error( 'TOM.boot: В функцию подано не верное имя файла!' );
+				return;
 			}
 	
 			// Проверяем зависимости и возвращаем результат
@@ -929,7 +1075,7 @@
 				// Проверяем - нашли ли мы модуль
 				if( moduleName === undefined )
 				{
-					throw new Error( 'TOM.boot: Не смогли найти модуль с именем: ' + moduleName );
+					this._error( 'TOM.boot: Не смогли найти модуль с именем: ' + moduleName );
 					return;
 				}
 	
@@ -966,10 +1112,7 @@
 					&& requireModulesLoadCount === TOM._objectLength( this._moduleList[ moduleName ].requires ) )
 				{
 					// Выводим лог при необходимости
-					if( this._debug.log )
-					{
-						console.info( 'TOM.boot: Модуль "' +  moduleName + '": загружен полностью' );
-					}
+					this._log( 'info', 'TOM.boot: Модуль "' +  moduleName + '": загружен полностью' );
 					
 					// Проверяем и инициализируем нужные объекты
 					if( this._checkAndInitialize( moduleName ) )
@@ -981,7 +1124,7 @@
 			}	
 	
 			// Вызов коллбеков в случае полной загрузки
-			this._callbacksCall( );
+			this._moduleCallbackCall( );
 		},
 	
 		//
@@ -1037,21 +1180,34 @@
 					// Формируем список инициализации
 					if( fileData.initialize !== undefined && fileLoadState !== 'init' )
 					{
-						var initializeList = fileData.initialize instanceof Array ? fileData.initialize : [ fileData.initialize ];
-	
-						// Вызываем функцию initialize
-						for( var j in initializeList )
+						// Если прописана анонимная функция для инициализации
+						if( fileData.initialize instanceof Function )
 						{
-							var initFunctionName = initializeList[ j ].replace( /(\*)/g, moduleName );
+							var initState = true,
+								initResult = fileData.initialize( ) || true; 
+							
+							// Удаляем ссылку на функцию
+							delete fileData.initialize( );
+						}
+						// Если прописан перечень функций для инициализации
+						else
+						{
+							var initializeList = fileData.initialize instanceof Array ? fileData.initialize : [ fileData.initialize ];
 	
-							if( this._initializeCall( initFunctionName ) )
+							// Вызываем функцию initialize
+							for( var j in initializeList )
 							{
-								this._fileLoadedStates[ filePath ] = 'init';
-							}
-							else
-							{
-								// @todo: Следует сделать проверку на прерывание инициализации
-								console.error( 'TOM.boot: Не смогли инициализировать: ' + initFunctionName );
+								var initFunctionName = initializeList[ j ].replace( /(\*)/g, moduleName );
+	
+								if( this._initializeCall( initFunctionName ) )
+								{
+									this._fileLoadedStates[ filePath ] = 'init';
+								}
+								else
+								{
+									// @todo: Следует сделать проверку на прерывание инициализации
+									this._log( 'error', 'TOM.boot: Не смогли инициализировать: ' + initFunctionName );
+								}
 							}
 						}
 					}
@@ -1088,11 +1244,12 @@
 					// Проверям нашли ли мы нужный объект
 					if( obj === undefined )
 					{
-						throw new Error( 'TOM.boot: Ошибка при поиске объекта инициализации - "' + initializeList[i] + '"!' );
+						this._error( 'TOM.boot: Ошибка при поиске объекта инициализации - "' + initializeList[i] + '"!' );
+						return;
 					}
 	
 					/* @toRefact: здесь нужно посмотреть можно ли инициализоровать скрипты с классами ( obj === Function ) */
-					if( ( typeof obj === 'object' || obj instanceof Function ) && obj.initialize instanceof Function )
+					if( ( obj instanceof Object || obj instanceof Function ) && obj.initialize instanceof Function )
 					{
 						initState = true;
 						initResult = obj.initialize( ) || true; 
@@ -1103,15 +1260,15 @@
 				}
 	
 				// Если инициализация не произошла - уведомляем об этом
-				if( initState === false && this._debug.warning )
+				if( initState === false )
 				{
-					if( typeof obj === 'object' && obj.initialize === undefined )
+					if( obj instanceof Object && obj.initialize === undefined )
 					{
-						console.warn( 'TOM.boot: Ошибка при инициализации - "' + initializeList[i] + '". Возможно инициализация происходила ранее!' );
+						this._log( 'warn', 'TOM.boot: Ошибка при инициализации - "' + initializeList[i] + '". Возможно инициализация происходила ранее!' );
 					}
 					else
 					{
-						console.warn( 'TOM.boot: Ошибка при инициализации - "' + initializeList[i] + '". Объект не существует!' );
+						this._log( 'warn',  'TOM.boot: Ошибка при инициализации - "' + initializeList[i] + '". Объект не существует!' );
 					}
 				}
 	
@@ -1126,36 +1283,50 @@
 		},
 	
 		// Запускаем колбеки
-		_callbacksCall: function( )
+		_moduleCallbackCall: function( )
 		{
 			// Вызов коллбеков в случае полной загрузки
-			for( var i in this._callbackList )
+			for( var i in this._modulesCallbackList )
 			{
+				// Если это не callaback модуля - пропускаем
+				if( this._modulesCallbackList[ i ].type !== 'modules' )
+				{
+					continue;
+				}
+				
+				//
 				var moduleInitCount = 0;
 	
 				//
-				for( var m in this._callbackList[ i ].modules  )
+				for( var m in this._modulesCallbackList[ i ].modules  )
 				{
-					if( this._moduleLoadedStates[ this._callbackList[ i ].modules[ m ] ] === 'complete' )
+					if( this._moduleLoadedStates[ this._modulesCallbackList[ i ].modules[ m ] ] === 'complete' )
 					{
 						moduleInitCount++;
 					}
 				}
 	
 				// Запускаем коллбек если все модули загружены
-				if( ( moduleInitCount === TOM._objectLength( this._callbackList[ i ].modules ) ) && ( this._callbackList[ i ].callback instanceof Function ) )
+				if( ( moduleInitCount === TOM._objectLength( this._modulesCallbackList[ i ].modules ) ) && ( this._modulesCallbackList[ i ].callback instanceof Function ) )
 				{
-					if( this._debug.log )
-					{
-						console.info( 'TOM.boot: ---! Загружены все модули данного этапа !---' );
-					}
+					//
+					this._log( 'info', 'TOM.boot: ---! Загружены все модули данного этапа !---' );
 	
 					// Вызываем коллбек
-					this._callbackList[ i ].callback( );
+					this._modulesCallbackList[ i ].callback( );
 	
 					// Удаляем коллбек
-					delete this._callbackList[ i ].callback;
+					delete this._modulesCallbackList[ i ];
 				}
+			}
+			
+			// Проверяем оставшиеся коллбеки
+			if( TOM._objectLength( this._modulesCallbackList ) <= 0 )
+			{
+				var context = this;
+				
+				// Запускаем таймер на всякий случай
+				this._completeTimer = setTimeout( function( ) { context._triggerCallback( 'complete' ); }, 500 );
 			}
 		},
 	
@@ -1232,49 +1403,110 @@
 			// Выводим лог о "не загруженных"
 			if( notLoadedFiles.length > 0 )
 			{
-				console.info( 'TOM.boot: Не загрузились ' + notLoadedFiles.length + ' файлов: ' + notLoadedFiles.join( ', ' )  );
+				this._log( 'info', 'TOM.boot: Не загрузились ' + notLoadedFiles.length + ' файлов: ' + notLoadedFiles.join( ', ' )  );
 			}
 	
 			// Выводим лог о "не инициализированных"
 			if( notInitFiles.length > 0 )
 			{
-				console.info( 'TOM.boot: Загрузились но не инициализировались ' + notInitFiles.length + ' файлов: ' + notInitFiles.join( ', ' )  );
+				this._log( 'info', 'TOM.boot: Загрузились но не инициализировались ' + notInitFiles.length + ' файлов: ' + notInitFiles.join( ', ' )  );
 			}
 	
 			// Выводим лог о "не загруженных"
 			if( notLoadedModules.length > 0 )
 			{
-				console.info( 'TOM.boot: Не загрузились ' + notLoadedModules.length + ' модулей: ' + notLoadedModules.join( ', ' )  );
+				this._log( 'info', 'TOM.boot: Не загрузились ' + notLoadedModules.length + ' модулей: ' + notLoadedModules.join( ', ' )  );
 			}	
 	
 			return ( notLoadedFiles.length > 0 || notLoadedModules.length > 0 || notInitFiles.length > 0 );
 		}
 	};
+	
 
 	// Проксирование функций
 	TOM.processor =
 	{
-		// Параметры отладки
-		_debug: TOM._options.debug.processor,
-	
 		// Список "обработчиков"
 		_handlers: [],
-	
-		// Установка обработчика событий на выполнение функций/сигналов
+		
+		/* Логирование
+		 */
+		_log: function( type, msg )
+		{
+			TOM._log( 'processor', type, msg );
+			return this;
+		},
+		
+		/* Вывод исключения/ошибки
+		 */
+		_error: function( errorMsg, errorObj )
+		{
+			TOM._error( 'processor', errorMsg, errorObj );
+			return this;
+		},
+		
+		/* Вызов обработчика события
+		 */
+		_triggerCallback: function( event, args )
+		{
+			TOM._triggerCallback( 'processor', event, args );
+			return this;
+		},
+		
+		/* Обработка событий
+		 */
+		callback: function( event, callback )
+		{
+			TOM._callback( 'processor', event, callback );
+			return this;
+		},
+			
+		/* Удаление обработчика
+		 */
+		removeCallback: function( event )
+		{
+			TOM._removeCallback( 'processor', event );
+			return this;
+		},
+		
+		/* Установка обработчика событий на выполнение функций/сигналов
+		 * 
+		 * @name {строка} - обрабатываемая функция
+		 * @handler {функция} - функция обработчик
+		 * @params {строка|объект} - параметры обработчика
+		 * @returns {TOM.processor|undefined}
+		 */
 		bind: function( name, handler, params )
 		{
 			// Обработка не верных данных
-			if( typeof handler === 'undefined' || typeof handler.constructor !== 'function' )
+			if( handler === undefined || !( handler.constructor instanceof Function ) )
 			{
-				throw new Error( 'TOM.processor.bind: Подана не верная функция-обработчик - ' + name );
+				this.error( 'TOM.processor.bind: Подана не верная функция-обработчик - ' + name );
 				return;
 			}
 	
 			// Инициализируем параметры
 			var params = params || { priority: '' };
 	
+			// Если в качестве имени фукции - объект - разбираем его
+			if( name instanceof Object 
+					&& ( name.pre !== undefined || name.post !== undefined ) )
+			{
+				var preNames = ( name.pre instanceof Array ) ? name.pre : [ name.pre ],
+					postNames = ( name.post instanceof Array ) ? name.post : [ name.post ];
+				
+				for( var i in preNames )
+				{
+					this.bind( 'pre-' + preNames[i].trim( ), handler, params );
+				}
+				
+				for( var j in postNames )
+				{
+					this.bind( 'post-' + postNames[j].trim( ), handler, params );
+				}
+			}
 			// Если в качестве имени у нас строка - проверяем не записано ли там несколько имён
-			if( typeof name === 'string' && ( name.indexOf( ' ' ) > -1 || name.indexOf( ',' ) > -1 ) )
+			else if( typeof name === 'string' && ( name.indexOf( ' ' ) > -1 || name.indexOf( ',' ) > -1 ) )
 			{
 				var names = ( name.indexOf( ' ' ) > -1 && name.indexOf( ',' ) <= 0 ) ? name.split( ' ' ) : name.split( ',' );
 	
@@ -1283,6 +1515,7 @@
 					this.bind( names[i].trim( ), handler, params );
 				}
 			}
+			// Стандартная обработка
 			else
 			{
 				var stage = params.stage || 'pre',
@@ -1292,7 +1525,7 @@
 								( ( typeof params === 'string' ) ? params : '' );
 	
 				// Если у нас состояние выставлено непосредственно в строке - ему и приоритет
-				if( typeof name === 'string' )
+				if( typeof name === 'string'  )
 				{
 					if( name.indexOf( 'post-' ) === 0 )
 					{
@@ -1308,13 +1541,13 @@
 				// Проверка наличия имён
 				if( name === undefined || name === '' )
 				{
-					throw new Error( 'TOM.processor.bind: Подано не верное имя обрабатываемой функции - ' + name );
+					this.error( 'TOM.processor.bind: Подано не верное имя обрабатываемой функции - ' + name );
 					return;
 				}
 				// Смотрим чтоб в названии небыло кирилических символов
 				else if( ( /^([а-яА-Я])/gi ).test( name ) )
 				{
-					throw new Error( 'TOM.processor.bind: Подано имя обрабатываемой функции с кирилическими символами - ' + name );
+					this.error( 'TOM.processor.bind: Подано имя обрабатываемой функции с кирилическими символами - ' + name );
 					return;
 				}
 	
@@ -1323,17 +1556,15 @@
 				{
 					if( this._handlers[ name ][i] === handler )
 					{
-						if( this._debug.warning ) // Выводим сообщение о том что повторно навешиваемся ( необходимо для дебага )
-						{
-							console.warn( 'TOM.processor.bind: Повторяющийся слушатель - ' + name );
-						}
+						// Выводим сообщение о том что повторно навешиваемся ( необходимо для дебага )
+						this._log( 'warn',  'TOM.processor.bind: Повторяющийся слушатель - ' + name );
 	
 						return;
 					}
 				}
 	
 				// Проверяем существует ли вообще функция на которую мы хотим - "навеситься" ( необходимо для дебага )
-				if( this._debug.warning )
+				if( TOM._options[ 'processor' ].warning )
 				{
 					var error = false;
 	
@@ -1358,7 +1589,7 @@
 					// Если ничего не вышло, сообщаем об этом консоль
 					if( error )
 					{	
-						console.warn( 'TOM.processor.bind: Слушатель цепляется на несуществующую ( или ещё не инициализированную ) функцию - ' + name );
+						this._log( 'warn',  'TOM.processor.bind: Слушатель цепляется на несуществующую ( или ещё не инициализированную ) функцию - ' + name );
 					}
 				}
 	
@@ -1375,14 +1606,20 @@
 			return this;
 		},
 	
-		// Снятие обработчика событий
+		/* Снятие обработчика событий
+		 * 
+		 * @name {строка} - обрабатываемая функция
+		 * @handler {функция|строка} - функция или идентификатор снимаемого обработчика
+		 * @params {type} - параметры снимаемого обработчика
+		 * @returns {TOM.processor|undefined}
+		 */
 		unbind: function( name, handler, params )
 		{
 			var params = params || {},
 				stage = params.stage || 'pre';
 	
 			// Если у нас состояние выставлено непосредственно в строке - ему и приоритет
-			if( typeof name === 'string')
+			if( typeof name === 'string' )
 			{
 				if( name.indexOf( 'post-' ) === 0 )
 				{
@@ -1394,7 +1631,8 @@
 			// Смотрим чтоб в названии небыло кирилических символов
 			if( ( /^([а-яА-Я])/gi ).test( name ) )
 			{
-				throw new Error( 'TOM.processor.unbind: Подано название с кирилическими символами - ' + name );
+				this.error( 'TOM.processor.unbind: Подано название с кирилическими символами - ' + name );
+				return;
 			}
 	
 			// Смотрим есть ли handler такого события
@@ -1403,7 +1641,7 @@
 				for( var i in this._handlers[ name ] )
 				{
 					var mainHandler = ( typeof handler === 'string' ) ? ( this._handlers[ name ][i].label || this._handlers[ name ][i].handler.name ) : this._handlers[ name ][i].handler,
-						checkHandler = ( ( ( typeof handler === 'string' || typeof handler === 'function' ) && mainHandler === handler ) || handler === undefined ) ? true : false;
+						checkHandler = ( ( ( typeof handler === 'string'  || handler instanceof Function ) && mainHandler === handler ) || handler === undefined ) ? true : false;
 	
 					if( checkHandler && this._handlers[ name ][i].stage === stage )
 					{
@@ -1421,7 +1659,13 @@
 			return this;
 		},
 	
-		// Установка "одноразового" обработчика события
+		/* Установка "одноразового" обработчика события
+		 * 
+		 * @name {строка} - обрабатываемая функция
+		 * @handler {функция} - функция обработчик
+		 * @params {строка|объект} - параметры обработчика
+		 * @returns {TOM.processor}
+		 */
 		one: function( name, handler, params )
 		{
 			var context = this,
@@ -1442,7 +1686,14 @@
 			return this;
 		},
 	
-		// Сигнал для обработчиков
+		/* Сигнал/триггер для обработчиков
+		 * 
+		 * @stage {pre|post} - этап выполнения функции
+		 * @name {строка} - имя функции
+		 * @sender {объект} - "отправитель"
+		 * @args {массив} - аргументы
+		 * @returns {TOM.processor|undefined|Boolean}
+		 */
 		signal: function( stage, name, sender, args )
 		{
 			// 
@@ -1459,7 +1710,7 @@
 			this._handlers[ name ].sort( function( a, b )
 			{
 				if( a.priority === 'begin' && b.priority !== 'begin' ) { return 1; }
-				else if( a.priority !== 'begin' && b.priority === 'begin' ) { return -1; }
+					else if( a.priority !== 'begin' && b.priority === 'begin' ) { return -1; }
 	
 				return 0;
 			} );
@@ -1467,7 +1718,7 @@
 			// Проходим по всем имеющимся обработчикам
 			for( var i in this._handlers[ name ] )
 			{
-				if( typeof this._handlers[ name ][i].handler === 'function' && this._handlers[ name ][i].stage === stage )
+				if( this._handlers[ name ][i].handler instanceof Function && this._handlers[ name ][i].stage === stage )
 				{
 					var handler = this._handlers[ name ][i].handler, // Вызываемый метод
 						label = this._handlers[ name ][i].label, // 
@@ -1497,7 +1748,7 @@
 						returnParam:
 						true - снимаем обработчик
 						false - прерываем дальнейшую обработку */
-					if( typeof returnParam === 'boolean' )
+					if( returnParam instanceof Boolean )
 					{
 						command = ( returnParam === false ) ? 'break' : 'unbind';
 					}
@@ -1515,20 +1766,14 @@
 						this.unbind( name, this._handlers[ name ][i].handler, { stage: this._handlers[ name ][i].stage, label: label } );
 	
 						// Выводим сообщение о том что мы прервали bind ( необходимо для дебага )
-						if( this._debug.log ) 
-						{
-							console.info( 'TOM.processor: Контролируемый unbind - ' + name + ( label !== '' ? ', ( метка: ' + label + ' )' : '' ) );
-						}
+						this._log( 'info',  'TOM.processor: Контролируемый unbind - ' + name + ( label !== '' ? ', ( метка: ' + label + ' )' : '' ) );
 					}
 	
 					// Передаём данные о прерывании - дальнейшей работы обработчика
 					if( command.indexOf( 'break' ) > -1  )
 					{
 						// Выводим сообщение 
-						if( this._debug.log ) 
-						{
-							console.info( 'TOM.processor: Прерываем дальнейшее выполнение обработчика - ' + name + ( label !== '' ? ', ( метка: ' + label + ' )' : '' ) );
-						}
+						this._log( 'info',  'TOM.processor: Прерываем дальнейшее выполнение обработчика - ' + name + ( label !== '' ? ', ( метка: ' + label + ' )' : '' ) );
 	
 						// Прерываем дальнейшую обработку
 						return false;
@@ -1540,13 +1785,16 @@
 		},
 	
 		/* Проксирование
-		* @object - 
-		* @parent -
+		 *
+		 * @object {объект} - проксируемый объект
+		 * @parent {объект} - родитель данного объекта ( для верного определения вызовов )
+		 * @returns {}
 		*/
 		proxy: function( object, parent, any )
 		{
 			var context = this;
 	
+			// 
 			this._proxyObject
 			(
 				object,
@@ -1582,7 +1830,7 @@
 							} */
 	
 							// Конструктор и всё связанное с наследованием - пропускаем
-							if( typeof method.prototype[ name ] !== 'function'
+							if( !( method.prototype[ name ] instanceof Function )
 								|| name === '__checkClassName__'
 								|| name.indexOf( '__parent' ) === 0 ) 
 							{
@@ -1606,9 +1854,13 @@
 			return this;
 		},
 	
-	/* "Приватные" методы */
+	/*
+	 *  "Приватные" методы 
+	 */
 	
-		// Проксирование методов конкретного объекта переданной оберткой ( оно глубокое )
+		/* Проксирование методов конкретного объекта переданной оберткой ( оно глубокое )
+		 * 
+		 */
 		_proxyObject: function( object, proxyCallback, parent, args, any )
 		{
 			// Глубокое проксирование ( проксируем только стандартные объекты )
@@ -1626,7 +1878,7 @@
 					}
 	
 					// Проксируем содержимое
-					if( typeof object[ member ] === 'function' )
+					if( object[ member ] instanceof Function )
 					{
 						object[ member ] = proxyCallback( object[ member ], ( parentName ? parentName + '.' : '' ) + member, args ) || object[ member ];
 					}
@@ -1639,7 +1891,9 @@
 			}
 		},
 	
-		// Конкретный прокси для того, чтобы добавить сигналирование методу
+		/* Конкретный прокси для того, чтобы добавить сигналирование методу
+		 * 
+		 */
 		_signalProxy: function( method, methodName )
 		{
 			var context = this,
@@ -1652,13 +1906,13 @@
 					{	
 						var mainResult = method.apply( this, arguments ), // Вызываем основную процедуру
 							postResult = context.signal( 'post', methodName, this, arguments ); // Вызываем постобработчик
-							// @todo: добавить возможность подмены результата в постобработчике
+							// @todo: добавить возможность подмены результата в пост-обработчике
 	
 						return mainResult;
 					}
 				};
 	
-				return callback;
+			return callback;
 		}
 	};
 
@@ -1765,11 +2019,48 @@
 		 *		]
 		 */
 	
-		// Параметры отладки
-		_debug: TOM._options.debug.classes, 
-	
 		// Список созданных классов
 		_list: [],
+		
+		/* Логирование
+		 */
+		_log: function( type, msg )
+		{
+			TOM._log( 'classes', type, msg );
+			return this;
+		},
+		
+		/* Вывод исключения/ошибки
+		 */
+		_error: function( errorMsg, errorObj )
+		{
+			TOM._error( 'classes', errorMsg, errorObj );
+			return this;
+		},
+		
+		/* Вызов обработчика события
+		 */
+		_triggerCallback: function( event, args )
+		{
+			TOM._triggerCallback( 'classes', event, args );
+			return this;
+		},
+		
+		/* Обработка событий
+		 */
+		callback: function( event, callback )
+		{
+			TOM._callback( 'classes', event, callback );
+			return this;
+		},
+			
+		/* Удаление обработчика
+		 */
+		removeCallback: function( event )
+		{
+			TOM._removeCallback( 'classes', event );
+			return this;
+		},
 	
 		/* Создание класса с нужными параметрами 
 		 * 
@@ -1782,7 +2073,8 @@
 		*/
 		create: function( classScope, className, inheritedClass/*, [@]*/ )
 		{
-			var newClass = undefined,
+			var	context = this,
+				newClass = undefined,
 				classConstructor = undefined,
 				classScopeName = classScope.__scopeName__ || '',
 				realClassScope = undefined,
@@ -1801,14 +2093,14 @@
 			}
 			else
 			{
-				throw new Error( 'TOM.class: Ошибка при создании класса: не указана "область видимости"!' );
+				this._error( 'TOM.class: Ошибка при создании класса: не указана "область видимости"!' );
 				return;	
 			}
 	
 			// Проверяем класс от которого собираемся наследоваться
 			if( inheritedClass === undefined )
 			{
-				throw new Error( 'TOM.class: Класс от которого мы собрались наследоваться - не существует!' );
+				this._error( 'TOM.class: Класс от которого мы собрались наследоваться - не существует!' );
 				return;
 			}
 	
@@ -1831,7 +2123,7 @@
 				// Или выводим ошибку
 				else if( arguments[ 4 ] !== undefined )
 				{
-					throw new Error( 'TOM.class: Ошибка при создании класса: не верные входные данные!' );
+					this._error( 'TOM.class: Ошибка при создании класса: не верные входные данные!' );
 					return;
 				}
 			}
@@ -1845,7 +2137,7 @@
 				// Если первым елементом является не функция - выдаём ошибку
 				if( !( classConstructor instanceof Function ) )
 				{
-					throw new Error( 'TOM.class: Ошибка при создании класса: не верные входные данные!' );
+					this._error( 'TOM.class: Ошибка при создании класса: не верные входные данные!' );
 					return;
 				}
 			}
@@ -1864,20 +2156,24 @@
 			}
 			else
 			{
-				throw new Error( 'TOM.class: Ошибка при создании класса: не верные входные данные!' );
+				this._error( 'TOM.class: Ошибка при создании класса: не верные входные данные!' );
 				return;
 			}
 	
 			// Создаём сам класс
-			newClass = function( )
+			var newClass = function( )
 			{
 				var args = Array.prototype.slice.call( arguments, 1 ),
 					constructorFullName = ( ( this.__classScopeName__ !== '') ? this.__classScopeName__ + '.' + this.__className__ : this.__className__ ) + '.constructor';
 	
-				// Дополнительные "костыли" для TOM.processor, которые возволяют определять момент создания класса 
-				TOM.processor.signal( 'pre', constructorFullName, this, args );
+				// Вызываем пред-обработчик конструктора
+				context._triggerCallback( 'pre-constructor', [ constructorFullName, args ] );
+				
+				// Вызываем конструктор
 				classConstructor.apply( this, arguments );
-				TOM.processor.signal( 'post', constructorFullName, this, args );
+				
+				// Вызываем пост-обработчик конструктора
+				context._triggerCallback( 'post-constructor', [ constructorFullName, args ] );
 			};
 	
 			// Дополнительно прописываем конструктор класса
@@ -1895,7 +2191,7 @@
 			newClass.prototype.__checkClassName__ = function( className, checkParent )
 			{
 				// Сверяем имя класса
-				var checkedName = ( ( this.__classScopeName__ !== '') ? this.__classScopeName__ + '.' + this.__className__ : this.__className__ ),
+				var checkedName = ( ( this.__classScopeName__ !== '' ) ? this.__classScopeName__ + '.' + this.__className__ : this.__className__ ),
 					checkState = ( checkedName === className );
 	
 				// Проверяем имя класса по цепочке родителей
@@ -1910,7 +2206,7 @@
 						if( parentClass !== undefined )
 						{
 							// Считываем полное имя класса родителя
-							parentCheckedClassName = ( parentClass.__classScopeName__ !== '') ? parentClass.__classScopeName__ + '.' + parentClass.__className__ : parentClass.__className__;
+							parentCheckedClassName = ( parentClass.__classScopeName__ !== '' ) ? parentClass.__classScopeName__ + '.' + parentClass.__className__ : parentClass.__className__;
 	
 							// Проверяем совпадение имени класса родителя
 							if( parentCheckedClassName === className )
@@ -1962,9 +2258,9 @@
 					{
 						newClass.prototype[ functionName ] = functionList[ indexOrName ]; 
 					}
-					else if( this._debug.warning )
+					else
 					{
-						console.warn( 'TOM.class: При создании класса не удалось скопировать параметр/функцию - не правильное имя!' );
+						this._log( 'warn',  'TOM.class: При создании класса не удалось скопировать параметр/функцию - не правильное имя!' );
 					}
 				}
 			}
@@ -1984,10 +2280,10 @@
 	
 			// Добавляем класс в список
 			this._list[ newClass.__classFullName__ ] = newClass;
-	
-			// Проксируем созданный и уже унаследованный класс
-			TOM.processor.proxy( newClass, newClass.__classFullName__ );
-	
+			
+			// Вызываем обработчик создания класса
+			context._triggerCallback( 'create', [ newClass ] );
+			
 			// Возвращаем созданный класс
 			return newClass;
 		},
@@ -1997,13 +2293,13 @@
 		 * @childClass {объект/функция} - Класс которому необходимо произвести наследование
 		 * @parentClass {объект/функция} - Класс от которого нужно произвести наследование
 		 * @return {Boolean}
-		 */
+		*/
 		inherit: function( childClass, parentClass )
 		{
 			// Если первым елементом является не функция - выдаём ошибку
 			if( parentClass === undefined || parentClass === '' )
 			{
-				throw new Error( 'Ошибка при наследовании класса: родитель не указан или не создан!' );
+				this._error( 'Ошибка при наследовании класса: родитель не указан или не создан!' );
 				return;
 			}
 	
@@ -2011,7 +2307,7 @@
 			var parentName = parentClass.__className__ || parentClass.name || '';
 			if( parentName === '' )
 			{
-				throw new Error( 'Ошибка при наследовании класса: у класса нет имени!' );
+				this._error( 'Ошибка при наследовании класса: у класса нет имени!' );
 				return;
 			}
 	
@@ -2042,12 +2338,12 @@
 				//
 				else if( parameterName === '' )
 				{
-					console.warn( this.__className__ + ': Не указано имя параметра/функции!' );
+					this._log( 'warn',  this.__className__ + ': Не указано имя параметра/функции!' );
 				}
 				//
 				else
 				{
-					console.warn( this.__className__ + ': Параметр/функция "' + parameterName + '" не существует!' );
+					this._log( 'warn',  this.__className__ + ': Параметр/функция "' + parameterName + '" не существует!' );
 				}
 			};
 	
@@ -2059,7 +2355,7 @@
 	
 				if( !( callFunction instanceof Function ) )
 				{
-					console.warn( this.__className__ + ': Функции "' + functionName + '" не существует' );
+					this._log( 'warn',  this.__className__ + ': Функции "' + functionName + '" не существует' );
 					return;
 				}
 	
@@ -2082,11 +2378,11 @@
 				}
 				else if( callerFunction === '' )
 				{
-					console.warn( this.__className__ + ': У вызывающей функции нет имени!' );
+					this._log( 'warn',  this.__className__ + ': У вызывающей функции нет имени!' );
 				}
 				else
 				{
-					console.warn( this.__className__ + ': Функции "' + callerFunction + '" не существует!' );
+					this._log( 'warn',  this.__className__ + ': Функции "' + callerFunction + '" не существует!' );
 				} 
 			};
 	
@@ -2094,4 +2390,14 @@
 			return this;
 		}
 	};
+
+	//=include commutator.js
+
+	// Дополнительные обработчики для лучшей связи между модулями
+	if( TOM.classes !== undefined && TOM.processor !== undefined )
+	{
+		TOM.classes.callback( 'create', function( newClass ) { TOM.processor.proxy( newClass, newClass.__classFullName__ ); } );
+		TOM.classes.callback( 'pre-constructor', function( constructorFullName, args ) { TOM.processor.signal( 'pre', constructorFullName, this, args ); } );
+		TOM.classes.callback( 'post-constructor', function( constructorFullName, args ) { TOM.processor.signal( 'post', constructorFullName, this, args ); } );
+	}
 } )( window );
