@@ -193,7 +193,7 @@
 		 * @event {строка} - событие которое необходимо вызвать
 		 * @returns {}
 		 */
-		_triggerCallback: function( module, event, args )
+		_triggerCallback: function( module, event, args, context )
 		{
 			for( var i in this._callbackList )
 			{
@@ -201,7 +201,7 @@
 				{
 					if( this._callbackList[ i ].callback instanceof Function )
 					{
-						this._callbackList[ i ].callback.apply( TOM[ module ], args );
+						this._callbackList[ i ].callback.apply( ( context instanceof Object ? context : TOM[ module ] ), args );
 					}
 				}
 			}

@@ -122,9 +122,9 @@ TOM.classes =
 	
 	/* Вызов обработчика события
 	 */
-	_triggerCallback: function( event, args )
+	_triggerCallback: function( event, args, context )
 	{
-		TOM._triggerCallback( 'classes', event, args );
+		TOM._triggerCallback( 'classes', event, args, context );
 		return this;
 	},
 	
@@ -249,13 +249,13 @@ TOM.classes =
 				constructorFullName = ( ( this.__classScopeName__ !== '') ? this.__classScopeName__ + '.' + this.__className__ : this.__className__ ) + '.constructor';
 
 			// Вызываем пред-обработчик конструктора
-			context._triggerCallback( 'pre-constructor', [ constructorFullName, args ] );
+			context._triggerCallback( 'pre-constructor', [ constructorFullName, args ], this );
 			
 			// Вызываем конструктор
 			classConstructor.apply( this, arguments );
 			
 			// Вызываем пост-обработчик конструктора
-			context._triggerCallback( 'post-constructor', [ constructorFullName, args ] );
+			context._triggerCallback( 'post-constructor', [ constructorFullName, args ], this );
 		};
 
 		// Дополнительно прописываем конструктор класса
