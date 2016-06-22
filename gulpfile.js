@@ -107,7 +107,7 @@ gulp.task( 'TOM:build', function( )
 	
 	// Выполняем поставленные задачи
 	return gulp.src( paths.src.main + 'main.js' )
-			.pipe( include( { hardFail: true } ) ) // Импортируем файлы
+			.pipe( include( { hardFail: false } ) ) // Импортируем файлы
 			.pipe( concat( fileName ) ) // Объеденяем файлы
 			.pipe( header( banner, { pkg : pkg } ) ) // Установка хидера
 			.pipe( gulpif( bundle.compress, uglify( { mangle: false, compress: false } ) ) ) // Сжимаем скрипт
