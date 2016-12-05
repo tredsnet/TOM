@@ -406,14 +406,12 @@ TOM.processor =
 
 						// Конструктор и всё связанное с наследованием - пропускаем
 						if( !( method.prototype[ name ] instanceof Function )
-							|| name === '__checkClassName__'
-							|| name.indexOf( '__parent' ) === 0 ) 
+							|| name.indexOf( '__' ) === 0 ) 
 						{
 							continue;
 						}
 
 						method.prototype[ name ] = context._signalProxy( method.prototype[ name ], proxyName );
-
 					}
 				}
 				else
