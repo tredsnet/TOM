@@ -1831,14 +1831,12 @@
 	
 							// Конструктор и всё связанное с наследованием - пропускаем
 							if( !( method.prototype[ name ] instanceof Function )
-								|| name === '__checkClassName__'
-								|| name.indexOf( '__parent' ) === 0 ) 
+								|| name.indexOf( '__' ) === 0 ) 
 							{
 								continue;
 							}
 	
 							method.prototype[ name ] = context._signalProxy( method.prototype[ name ], proxyName );
-	
 						}
 					}
 					else
@@ -1929,6 +1927,7 @@
 				{
 					throw Error( 'Второй аргумент не поддерживается!' );
 				}
+				
 				if( typeof prototype !== 'object' )
 				{
 					throw TypeError( 'В функцию должен быть передан объект!' );
@@ -1949,6 +1948,7 @@
 		/*
 		 * @todo: 
 		 * 1. Добавить приватные функции/переменные ( которые нельзя вызвать из наследника ). Возможно просто при вызове не обрабатывать функции с _ в начале названия функции
+		 * 2. 
 		 */
 	
 		/* Класс можно создавать тремя способами.
@@ -2228,21 +2228,6 @@
 				return checkState || parentCheckState;
 			};
 	
-			// Реализуем "деструктор", обнуляя в нём всё что нам попадётся
-			newClass.prototype.destructor = function( )
-			{
-				for( var name in this )
-				{
-					delete this[ name ];
-				}
-			};
-	
-			// Делаем ссылки на деструктор - под другими именами
-			newClass.prototype.destroy = function( )
-			{
-				return this.destructor.apply( this, ( arguments.length > 0 ? arguments : arguments.callee.caller.arguments ) );
-			};
-	
 			// Прописываем функции из functionList в prototype
 			if( functionList instanceof Array || functionList instanceof Object )
 			{
@@ -2270,11 +2255,31 @@
 			{
 				this.inherit( newClass, inheritedClass );
 			}
+			
+			// Реализуем "деструктор", обнуляя в нём всё что нам попадётся
+			if( !newClass.prototype.hasOwnProperty( 'desctructor' ) )
+			{
+				newClass.prototype.destructor = function( )
+				{
+					for( var name in this )
+					{
+						delete this[ name ];
+					}
+				};
+			}
 	
-			// Переносим класс в необходимую область видимости - если такая есть
+			// Делаем ссылки на деструктор - под другим именем
+			if( !newClass.prototype.hasOwnProperty( 'destroy' ) )
+			{
+				newClass.prototype.destroy = function( )
+				{
+					return this.destructor.apply( this, ( arguments.length > 0 ? arguments : arguments.callee.caller.arguments ) );
+				};
+			}
+	
+			// Прописываем класс в нужную область видимостии - если такая есть
 			if( realClassScope !== undefined )
 			{
-				// Прописываем класс в нужную область видимости
 				realClassScope[ className ] = newClass;
 			}
 	
@@ -2310,81 +2315,55 @@
 				this._error( 'Ошибка при наследовании класса: у класса нет имени!' );
 				return;
 			}
+			
+			// Вызов функции родителя
+			var parentCallFunction = function( childFunc, parentFunc )
+			{
+				return function( )
+				{
+					// Копируем текущего родителя функции
+					var tmp = this.__parentCall__;
 	
+					// Добавляем/заменяем метод __parentCall__ у родителя,
+					// дабы вызов дальше шёл от его имени
+					this.__parentCall__ = parentFunc;
+	
+					// Вызываем функцию
+					// и возвращаем ссылку на оригинальный __parentCall__
+					var ret = childFunc.apply( this, ( arguments.length > 0 ? arguments : arguments.callee.caller.arguments ) );
+					this.__parentCall__ = tmp;
+	
+					return ret;
+				};
+			};
+			
 			// Запоминаем методы наследника
-			var childPrototype = childClass.prototype;
+			var childPrototype = Object.assign( { }, childClass.prototype );
 	
 			// Начинаем наследование
 			childClass.prototype = Object.create( parentClass.prototype );
-			childClass.prototype.constructor = childClass;
+	
+			// Оставляем конструктор родителя
+			childClass.prototype.__parent__ = Object.create( parentClass.prototype );
+			childClass.prototype.__parentCall__ = parentCallFunction( childClass.prototype.constructor, childClass.prototype.__parent__.constructor );
+			
+			// Перезаписываем конструктор класса
+			childClass.prototype.constructor = parentCallFunction( childClass, childClass.prototype.__parent__.constructor );
 	
 			// Переопределяем родительские методы
 			for( var childMethodName in childPrototype )
 			{
-				childClass.prototype[ childMethodName ] = childPrototype[ childMethodName ];
+				if( typeof childPrototype[ childMethodName ] === 'function' 
+					&& typeof childClass.prototype[ childMethodName ] === 'function' 
+					/* && fnTest.test( prop[ name ] ) */ )
+				{
+					childClass.prototype[ childMethodName ] = parentCallFunction( childPrototype[ childMethodName ], childClass.prototype.__parent__[ childMethodName ] );
+				}
+				else
+				{
+					childClass.prototype[ childMethodName ] = childPrototype[ childMethodName ];
+				}
 			}
-	
-			// Оставляем конструктор родителя
-			childClass.prototype.__parent__ = parentClass.prototype;
-	
-			// Возврат ссылки на родительскую функцию
-			childClass.prototype.__parentParameter__ = function( parameterName )
-			{
-				//
-				if( parameterName !== '' && this.__parent__.hasOwnProperty( parameterName ) )
-				{
-					return this.__parent__[ parameterName ];
-				}
-				//
-				else if( parameterName === '' )
-				{
-					this._log( 'warn',  this.__className__ + ': Не указано имя параметра/функции!' );
-				}
-				//
-				else
-				{
-					this._log( 'warn',  this.__className__ + ': Параметр/функция "' + parameterName + '" не существует!' );
-				}
-			};
-	
-			// Вызов функции родителя ( с параметрами ), не указывая префикс
-			childClass.prototype.__parentFunction__ = function( functionName, callArguments )
-			{
-				var callFunction = this.__parentParameter__( functionName ),
-					callArguments = ( callArguments instanceof Array ) ? callArguments : [ callArguments ];
-	
-				if( !( callFunction instanceof Function ) )
-				{
-					this._log( 'warn',  this.__className__ + ': Функции "' + functionName + '" не существует' );
-					return;
-				}
-	
-				return callFunction.apply( this, callArguments );
-			};
-	
-			// Вызываем родительскую функцию по имени вызывающей функции
-			childClass.prototype.__parentCall__ = function( )
-			{
-				var callerObject = arguments.callee.caller,
-					callerFunction = arguments.callee.caller.name || '',
-					callerArguments = ( arguments.length > 0 ? arguments : arguments.callee.caller.arguments ); // @todo: проверить правильно ли ставятся аргументы
-	
-				if( callerFunction !== '' && this.__parent__[ callerFunction ] instanceof Function )
-				{
-					var caller = ( callerObject.prototype.__className__ === this.__parent__.__className__ ) ? this.__parent__ : this;
-					// console.log( 'Вызываем функцию ' + callerFunction + ' от имени ' + caller.__className__ );
-	
-					return caller.__parent__[ callerFunction ].apply( this, callerArguments );
-				}
-				else if( callerFunction === '' )
-				{
-					this._log( 'warn',  this.__className__ + ': У вызывающей функции нет имени!' );
-				}
-				else
-				{
-					this._log( 'warn',  this.__className__ + ': Функции "' + callerFunction + '" не существует!' );
-				} 
-			};
 	
 			// Возвращаем ссылку
 			return this;
